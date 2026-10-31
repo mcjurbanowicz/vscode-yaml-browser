@@ -40,7 +40,7 @@
       },
       {
         "command": "adoInspector.openReferencingFile",
-        "title": "Azure DevOps: Open Referencing File",
+        "title": "Azure DevOps: Find Template References",
         "category": "Azure DevOps YAML Inspector"
       },
       {
@@ -66,6 +66,15 @@
         {
           "command": "adoInspector.navigateToTemplate",
           "when": "config.adoInspector.enabled"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "adoInspector.openReferencingFile",
+          "when": "editorLangId == yaml && config.adoInspector.enabled",
+          "group": "navigation",
+          "title": "Find Template References",
+          "icon": "$(references)"
         }
       ]
     },

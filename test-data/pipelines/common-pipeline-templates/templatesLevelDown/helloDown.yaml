@@ -1,0 +1,6 @@
+steps:
+- pwsh: |
+    Write-Output "Hello down step"
+  displayName: 'Hello down'
+
+- template: ../../otherTemplates/hello.yaml

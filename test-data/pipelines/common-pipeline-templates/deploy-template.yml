@@ -1,7 +1,3 @@
-# Level 2: Deploy Template
-# Composes Level 1 build-template with deployment-specific logic
-# This is the highest-level template in the hierarchy
-# It cascades down to Level 1 -> Level 0
 
 parameters:
   - name: environment
@@ -13,12 +9,7 @@ parameters:
     default: 'ubuntu-latest'
     description: 'Build image reference'
 
----
-# Level 2: Conditional deployment routing
-# Routes build logic based on target environment
-
 stages:
-  # Route to staging deployment
   - ${{ if eq(parameters.environment, 'staging') }}:
       - template: build-template.yml
         parameters:
@@ -34,7 +25,6 @@ stages:
                 Write-Output "Target: staging"
               displayName: 'Deploy to Staging'
 
-  # Route to production deployment
   - ${{ if eq(parameters.environment, 'production') }}:
       - template: build-template.yml
         parameters:
@@ -50,7 +40,6 @@ stages:
                 Write-Output "Target: production"
               displayName: 'Deploy to Production'
 
-  # Default deployment stage
   - stage: Deploy
     displayName: 'Deploy Stage'
     jobs:

@@ -1,25 +1,10 @@
-# Shared Variables Template
-# Used by all pipeline templates to share common variable definitions
-# This file is included via `template: ../vars.yml` in other templates
-
----
-# Common variables available across all pipelines
 variables:
-  - name: BuildId
-    value: '$(Build.BuildId)'
-  - name: PipelineName
-    value: 'Main Pipeline'
-  - name: SourceBranch
-    value: '$(Build.SourceBranch)'
-  - name: BuildNumber
-    value: '$(Build.BuildNumber)'
-  - name: AgentName
-    value: '$(Agent.Name)'
-  - name: AgentVersion
-    value: '$(Agent.Version)'
-  - name: CurrentDate
-    value: '$(Build.SourceTimeDate)'
-  - name: BuildPlatform
-    value: '$(Build.SourcesDirectory)'
-  - name: BuildConfiguration
-    value: '$(BuildConfiguration)'
+  BuildId: '$(Build.BuildId)'
+  PipelineName: 'Main Pipeline'
+  SourceBranch: '$(Build.SourceBranch)'
+  BuildNumber: '$(Build.BuildNumber)'
+  AgentName: '$(Agent.Name)'
+  AgentVersion: '$(Agent.Version)'
+  CurrentDate: '$(Build.SourceTimeDate)'
+  BuildPlatform: '$(Build.SourcesDirectory)'
+  BuildConfiguration: '$(BuildConfiguration)'

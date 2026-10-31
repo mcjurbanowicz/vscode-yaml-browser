@@ -1,7 +1,3 @@
-# Level 0: Base Common Utilities Template
-# Provides reusable step definitions that higher-level templates can compose
-# This is the foundation layer of the template hierarchy
-
 parameters:
   - name: image
     type: string
@@ -22,10 +18,6 @@ parameters:
           Write-Output "Base task executed"
         displayName: 'Base Script'
 
----
-# Level 0: Base Setup Stage
-# Provides foundational setup steps that all templates inherit from
-
 stages:
   - stage: BaseSetup
     displayName: 'Base Setup Stage'
@@ -33,7 +25,6 @@ stages:
       - job: BaseJob
         displayName: 'Base Job'
         steps:
-          # Conditional shell setup based on parameter
           - ${{ if eq(parameters.shell, 'bash') }}:
               - pwsh: |
                   Write-Output "Using bash shell"
@@ -45,13 +36,11 @@ stages:
                   Write-Output "PowerShell version: $($PSVersionTable.PSVersion)"
                 displayName: 'Shell Setup'
 
-          # Include shared variables template
-          - template: ../vars.yml
-            parameter:
+          - template: vars.yml
+            parameters:
               variableName: 'baseVar'
               value: 'value-from-common'
 
-          # Execute parameterized steps from parent templates
           - ${{ parameters.steps }}
 
   - stage: BaseCleanup
@@ -64,3 +53,4 @@ stages:
               Write-Output "Cleanup completed"
               Write-Output "Base cleanup finished successfully"
             displayName: 'Cleanup'
+          - template: ../otherTemplates/hello.yaml
