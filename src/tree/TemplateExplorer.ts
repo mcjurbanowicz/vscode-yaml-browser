@@ -29,23 +29,27 @@ export class TemplateExplorerProvider implements vscode.TreeDataProvider<Templat
    * Set the tree data.
    */
   setTree(tree: TemplateReferenceTree | null): void {
-    this.tree = tree;
+    this.tree = tree ? this.createNode(tree.tree, null) : null;
     this.expandedNodes.clear();
     this._onDidChangeTreeData.fire();
+  }
+
+  get rootNode(): TemplateTreeNode | null {
+    return this.tree;
   }
 
   /**
    * Get the child elements of a tree item.
    */
   getTreeItem(element: TemplateTreeNode): vscode.TreeItem {
-    if (element.isLeaf) {
-      return element;
-    }
-
-    const item = new vscode.TreeItem(element.label, vscode.TreeItemCollapsibleState.Expanded);
+    const collapsibleState = element.children.length
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.None;
+    const item = new vscode.TreeItem(element.label, collapsibleState);
     item.tooltip = element.tooltip;
     item.contextValue = element.contextValue;
     item.iconPath = new vscode.ThemeIcon(element.iconPath);
+    item.resourceUri = vscode.Uri.file(element.path);
     item.command = {
       command: 'adoInspector.navigateToTemplate',
       title: `Navigate to ${element.label}`,
@@ -62,15 +66,11 @@ export class TemplateExplorerProvider implements vscode.TreeDataProvider<Templat
       return Promise.resolve([]);
     }
 
-    if (element === undefined || element === this.tree) {
+    if (element === undefined) {
       return Promise.resolve([this.tree]);
     }
 
-    if (element.parent === this.tree) {
-      return Promise.resolve(element.children);
-    }
-
-    return Promise.resolve([]);
+    return Promise.resolve(element.children);
   }
 
   /**
@@ -97,9 +97,29 @@ export class TemplateExplorerProvider implements vscode.TreeDataProvider<Templat
    * Open a template in a new editor tab.
    */
   async openTemplate(node: TemplateTreeNode): Promise<void> {
-    const uri = vscode.Uri.parse(node.path, true);
+    const uri = vscode.Uri.file(node.path);
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(document);
+  }
+
+  private createNode(node: TemplateNode, parent: TemplateTreeNode | null): TemplateTreeNode {
+    const children = node.children.map((child) => this.createNode(child, null));
+    const treeNode = new TemplateTreeNode(
+      node.path,
+      node.path.split(/[\\/]/).pop() || node.path,
+      node.path,
+      'file',
+      node.isRoot ? 'pipeline' : 'template',
+      children.length === 0,
+      children,
+      node.depth,
+      node.parameters ? JSON.stringify(node.parameters) : '',
+      parent
+    );
+    for (const child of children) {
+      child.parent = treeNode;
+    }
+    return treeNode;
   }
 }
 

@@ -47,14 +47,18 @@ export class TemplateScanner {
     const fullPath = path.resolve(this.workspaceRoot, filePath);
 
     // Check cache first
-    if (this.cache.has(fullPath)) {
+    const cachedEntry = this.cache.getEntry(fullPath);
+    if (cachedEntry && await this.isCacheEntryFresh(cachedEntry.fileSignatures)) {
       console.log(
         `[ADO Inspector] Cache hit for: ${filePath} (depth: ${config.maxDepth})`
       );
       return {
-        tree: this.cache.get(fullPath)! as TemplateReferenceTree,
-        errors: [],
+        tree: cachedEntry.data,
+        errors: cachedEntry.data.errors,
       };
+    }
+    if (cachedEntry) {
+      this.cache.delete(fullPath);
     }
 
     // Not in cache, need to build
@@ -62,11 +66,11 @@ export class TemplateScanner {
       const result = await this.scanFile(fullPath, config);
       if (result.errors.length > 0) {
         // Don't cache if there were errors
-        return result;
+        return { tree: result, errors: result.errors };
       }
       // Store in cache
-      this.cache.set(fullPath, result.tree);
-      return result;
+      this.cache.set(fullPath, result, await this.getFileSignatures(result));
+      return { tree: result, errors: result.errors };
     } catch (error) {
       const scanErrors: TemplateScanError[] = [
         {
@@ -96,17 +100,60 @@ export class TemplateScanner {
     }
   }
 
+  private async isCacheEntryFresh(
+    fileSignatures: Record<string, number> | undefined
+  ): Promise<boolean> {
+    if (!fileSignatures) {
+      return false;
+    }
+    const entries = Object.entries(fileSignatures);
+    if (entries.length === 0) {
+      return false;
+    }
+
+    for (const [filePath, cachedMtime] of entries) {
+      try {
+        const stat = await fs.stat(filePath);
+        if (stat.mtimeMs !== cachedMtime) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private async getFileSignatures(
+    tree: TemplateReferenceTree
+  ): Promise<Record<string, number>> {
+    const filePaths = new Set([
+      tree.root,
+      ...tree.references.map((reference) => reference.path),
+    ]);
+    const signatures: Record<string, number> = {};
+    for (const filePath of filePaths) {
+      const stat = await fs.stat(filePath);
+      signatures[filePath] = stat.mtimeMs;
+    }
+    return signatures;
+  }
+
   /**
    * Recursively scan a file and its referenced templates.
    */
   private async scanFile(
     filePath: string,
-    config: ScanConfig
+    config: ScanConfig,
+    currentDepth: number = 0,
+    ancestors: Set<string> = new Set<string>()
   ): Promise<TemplateReferenceTree> {
     const fullPath = path.resolve(this.workspaceRoot, filePath);
 
     // Check if file exists
-    if (!(await fs.existsSync(fullPath))) {
+    try {
+      await fs.access(fullPath);
+    } catch {
       return {
         root: filePath,
         tree: {
@@ -158,27 +205,41 @@ export class TemplateScanner {
       };
     }
 
-    // Parse the YAML
-    let document: unknown;
+    // Parse every YAML document so multi-document pipeline files are scanned.
+    let documents: unknown[];
+    const errors: TemplateScanError[] = [];
     try {
-      document = yaml.parse(content, {
+      const parsedDocuments = yaml.parseAllDocuments(content, {
         prettyErrors: true,
+      });
+      documents = parsedDocuments.map((document) => {
+        for (const parseError of document.errors) {
+          const position = parseError.linePos?.[0];
+          errors.push({
+            file: fullPath,
+            line: position?.line ?? 1,
+            column: position?.col ?? 1,
+            message: parseError.message,
+            type: 'error',
+          });
+        }
+        return document.toJS();
       });
     } catch (error) {
       return {
-        root: filePath,
+        root: fullPath,
         tree: {
-          path: filePath,
-          depth: 0,
+          path: fullPath,
+          depth: currentDepth,
           isRoot: true,
           children: [],
           parameters: null,
           referencedLine: 0,
         },
         references: [],
-        errors: [
+        errors: [...errors,
           {
-            file: filePath,
+            file: fullPath,
             line: 1,
             column: 1,
             message: `Failed to parse YAML: ${error instanceof Error ? error.message : String(error)}`,
@@ -188,58 +249,72 @@ export class TemplateScanner {
       };
     }
 
-    // Extract parameters from the file
-    const parameters = this.extractParameters(document);
-
-    // Build the tree node for this file
-    const node: TemplateNode = {
-      path: filePath,
-      depth: 0,
-      isRoot: true,
-      children: [],
-      parameters,
-      referencedLine: 0,
-    };
-
-    // Find template references
-    const templateReferences = this.findTemplateReferences(
-      document,
-      filePath,
-      0,
-      config.maxDepth,
-      config.minDepth
-    );
-
-    // Build the tree
     const tree: TemplateNode = {
-      path: filePath,
-      depth: 0,
-      isRoot: true,
+      path: fullPath,
+      depth: currentDepth,
+      isRoot: currentDepth === 0,
       children: [],
-      parameters,
+      parameters: this.extractParameters(documents[0]),
       referencedLine: 0,
     };
+    const templateReferences = documents.flatMap((document) =>
+      this.findTemplateReferences(
+        document,
+        fullPath,
+        currentDepth,
+        config.maxDepth,
+        config.minDepth,
+        content
+      )
+    );
+    const currentAncestors = new Set(ancestors).add(fullPath);
 
-    // Create a map of template paths to their nodes
-    const nodeMap = new Map<string, TemplateNode>();
-    nodeMap.set(filePath, node);
+    if (currentDepth < config.maxDepth) {
+      for (const reference of [...templateReferences]) {
+        if (reference.parameterSyntaxError) {
+          errors.push({
+            file: reference.sourceFile,
+            line: reference.line,
+            column: reference.column,
+            message: reference.parameterSyntaxError,
+            type: 'error',
+          });
+        }
+        if (currentAncestors.has(reference.path)) {
+          errors.push({
+            file: fullPath,
+            line: reference.line,
+            column: reference.column,
+            message: `Circular template reference: ${reference.path}`,
+            type: 'error',
+          });
+          continue;
+        }
 
-    // Process each template reference
-    for (const ref of templateReferences) {
-      const childNode = nodeMap.get(ref.path);
-      if (childNode) {
-        node.children.push(childNode);
+        const childResult = await this.scanFile(
+          reference.path,
+          config,
+          currentDepth + 1,
+          currentAncestors
+        );
+        errors.push(
+          ...this.validateTemplateParameters(reference, childResult.tree.parameters)
+        );
+        childResult.tree.depth = currentDepth + 1;
+        childResult.tree.isRoot = false;
+        childResult.tree.parameters = reference.parameters;
+        childResult.tree.referencedLine = reference.line;
+        tree.children.push(childResult.tree);
+        templateReferences.push(...childResult.references);
+        errors.push(...childResult.errors);
       }
     }
 
-    // Build the tree recursively
-    this.buildTree(node, tree, nodeMap, config.maxDepth);
-
     return {
-      root: filePath,
-      tree: tree,
+      root: fullPath,
+      tree,
       references: templateReferences,
-      errors: [],
+      errors,
     };
   }
 
@@ -270,84 +345,156 @@ export class TemplateScanner {
     filePath: string,
     currentDepth: number,
     maxDepth: number,
-    minDepth: number
+    minDepth: number,
+    sourceContent: string
   ): TemplateReference[] {
     const references: TemplateReference[] = [];
+    const lines = sourceContent.split(/\r?\n/);
+    let searchFromLine = 0;
 
-    if (!doc || typeof doc !== 'object') {
-      return references;
-    }
-
-    const docObj = doc as Record<string, unknown>;
-
-    // Check for template references at this level
-    const templateValues = this.findTemplateValues(docObj);
-
-    for (const templatePath of templateValues) {
-      const relativePath = this.resolveTemplatePath(
-        templatePath,
-        filePath,
-        currentDepth
-      );
-
-      if (!relativePath) {
-        continue;
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+      if (!value || typeof value !== 'object') {
+        return;
       }
 
-      // Get parameters passed to this template
-      const parameters = this.extractParametersFromContext(docObj);
-
-      const ref: TemplateReference = {
-        sourceFile: filePath,
-        line: 0, // Would need line tracking for full accuracy
-        column: 0,
-        path: relativePath,
-        parameters: parameters || null,
-        depth: currentDepth,
-        id: `${filePath}|${currentDepth}|${relativePath}`,
-      };
-
-      references.push(ref);
-    }
-
-    // Recurse into children
-    const keys = Object.keys(docObj);
-    for (const key of keys) {
-      if (Array.isArray(docObj[key])) {
-        // If it's an array, check each element
-        for (const item of docObj[key]) {
-          references.push(...this.findTemplateReferences(item, filePath, currentDepth, maxDepth, minDepth));
+      const objectValue = value as Record<string, unknown>;
+      const templatePath = objectValue.template;
+      if (typeof templatePath === 'string' && !templatePath.includes('@')) {
+        const resolvedPath = this.resolveTemplatePath(
+          templatePath,
+          filePath,
+          currentDepth
+        );
+        const location = this.findTemplateLocation(lines, templatePath, searchFromLine);
+        if (location) {
+          searchFromLine = location.line;
         }
-      } else if (typeof docObj[key] === 'object' && docObj[key] !== null) {
-        // Recurse into objects
-        references.push(...this.findTemplateReferences(docObj[key], filePath, currentDepth, maxDepth, minDepth));
+        references.push({
+          sourceFile: filePath,
+          line: location?.line ?? 1,
+          column: location?.column ?? 1,
+          path: resolvedPath,
+          parameters: this.extractParametersFromContext(objectValue),
+          parameterSyntaxError:
+            objectValue.parameter !== undefined && objectValue.parameters === undefined
+              ? 'Azure DevOps template invocations use "parameters:", not "parameter:".'
+              : undefined,
+          depth: currentDepth + 1,
+          id: `${filePath}|${currentDepth + 1}|${resolvedPath}`,
+        });
       }
-    }
+
+      for (const [key, child] of Object.entries(objectValue)) {
+        if (key !== 'template') {
+          visit(child);
+        }
+      }
+    };
+
+    visit(doc);
 
     return references;
   }
 
-  /**
-   * Find template values (strings starting with . or /) in an object.
-   */
-  private findTemplateValues(obj: Record<string, unknown>): string[] {
-    const values: string[] = [];
+  private findTemplateLocation(
+    lines: string[],
+    templatePath: string,
+    startLine: number
+  ): { line: number; column: number } | undefined {
+    const templateLine = /^\s*(?:-\s*)?template:\s*(?:(['"])(.*?)\1|([^\s#]+))/;
+    for (let index = startLine; index < lines.length; index++) {
+      const match = templateLine.exec(lines[index]);
+      const value = match?.[2] ?? match?.[3];
+      if (value === templatePath && match) {
+        return {
+          line: index + 1,
+          column: lines[index].indexOf(value) + 1,
+        };
+      }
+    }
+    return undefined;
+  }
 
-    for (const key of Object.keys(obj)) {
-      const value = obj[key];
-      if (typeof value === 'string') {
-        // Check if this looks like a template path
-        if (value.startsWith('./') || value.startsWith('../')) {
-          values.push(value);
-        }
-      } else if (Array.isArray(value)) {
-        values.push(...this.findTemplateValues(obj as Record<string, unknown>));
-      } else if (typeof value === 'object' && value !== null) {
-        values.push(...this.findTemplateValues(value as Record<string, unknown>));
+  private validateTemplateParameters(
+    reference: TemplateReference,
+    definitions: Record<string, unknown> | null
+  ): TemplateScanError[] {
+    if (!definitions) {
+      return [];
+    }
+
+    const diagnostics: TemplateScanError[] = [];
+    const passed = reference.parameters ?? {};
+    for (const parameterName of Object.keys(passed)) {
+      if (!(parameterName in definitions)) {
+        diagnostics.push({
+          file: reference.sourceFile,
+          line: reference.line,
+          column: reference.column,
+          message: `Template does not declare parameter "${parameterName}".`,
+          type: 'error',
+        });
       }
     }
 
-    return values;
+    for (const [parameterName, definition] of Object.entries(definitions)) {
+      if (!definition || typeof definition !== 'object') {
+        continue;
+      }
+      const parameterDefinition = definition as Record<string, unknown>;
+      const hasDefault = Object.prototype.hasOwnProperty.call(parameterDefinition, 'default');
+      if (!hasDefault && !(parameterName in passed)) {
+        diagnostics.push({
+          file: reference.sourceFile,
+          line: reference.line,
+          column: reference.column,
+          message: `Required template parameter "${parameterName}" is not supplied.`,
+          type: 'error',
+        });
+        continue;
+      }
+
+      if (!(parameterName in passed)) {
+        continue;
+      }
+      const expectedType = parameterDefinition.type;
+      const actualValue = passed[parameterName];
+      const isValid = expectedType === 'string'
+        ? typeof actualValue === 'string'
+        : expectedType === 'number'
+          ? typeof actualValue === 'number'
+          : expectedType === 'boolean'
+            ? typeof actualValue === 'boolean'
+            : expectedType === 'object'
+              ? typeof actualValue === 'object' && actualValue !== null
+              : true;
+      if (!isValid) {
+        diagnostics.push({
+          file: reference.sourceFile,
+          line: reference.line,
+          column: reference.column,
+          message: `Template parameter "${parameterName}" expects ${String(expectedType)}.`,
+          type: 'error',
+        });
+      }
+
+      const values = parameterDefinition.values;
+      if (Array.isArray(values) && !values.includes(actualValue)) {
+        diagnostics.push({
+          file: reference.sourceFile,
+          line: reference.line,
+          column: reference.column,
+          message: `Value for template parameter "${parameterName}" is not one of its declared values.`,
+          type: 'error',
+        });
+      }
+    }
+
+    return diagnostics;
   }
 
   /**
@@ -367,7 +514,7 @@ export class TemplateScanner {
     for (const param of docObj.parameters) {
       if (param && typeof param === 'object') {
         const paramName = (param as Record<string, unknown>).name;
-        if (paramName) {
+        if (typeof paramName === 'string') {
           params[paramName] = param;
         }
       }
@@ -385,20 +532,24 @@ export class TemplateScanner {
     }
 
     const contextObj = context as Record<string, unknown>;
-    if (!contextObj.parameters || !Array.isArray(contextObj.parameters)) {
+    const rawParameters = contextObj.parameters ?? contextObj.parameter;
+    if (!rawParameters || typeof rawParameters !== 'object') {
       return null;
     }
 
+    if (!Array.isArray(rawParameters)) {
+      return rawParameters as Record<string, unknown>;
+    }
+
     const params: Record<string, unknown> = {};
-    for (const param of contextObj.parameters) {
-      if (param && typeof param === 'object') {
-        const paramName = (param as Record<string, unknown>).name;
-        if (paramName) {
-          params[paramName] = param;
+    for (const parameter of rawParameters) {
+      if (parameter && typeof parameter === 'object') {
+        const name = (parameter as Record<string, unknown>).name;
+        if (typeof name === 'string') {
+          params[name] = parameter;
         }
       }
     }
-
     return params;
   }
 
@@ -409,18 +560,10 @@ export class TemplateScanner {
     templatePath: string,
     sourceFile: string,
     depth: number
-  ): string | null {
-    // Remove any leading "./" or "../" for consistent handling
-    const normalizedPath = templatePath.replace(/^\.\//, '').replace(/^\.\.\//, '');
-
-    // For simplicity, resolve relative to workspace root
-    // In a more sophisticated implementation, you'd resolve relative to the source file
-    const resolvedPath = path.resolve(this.workspaceRoot, normalizedPath);
-
-    // Normalize the path
-    const normalizedResolved = resolvedPath.replace(/\\/g, '/');
-
-    return normalizedResolved;
+  ): string {
+    return path.isAbsolute(templatePath)
+      ? path.normalize(templatePath)
+      : path.resolve(path.dirname(sourceFile), templatePath);
   }
 
   /**
@@ -438,31 +581,17 @@ export class TemplateScanner {
       for (const entry of entries) {
         const fullPath = path.join(rootPath, entry.name);
 
-        // Check if file matches include patterns
-        const matchesInclude = config.includePatterns.some((pattern) =>
-          entry.name.match(pattern)
-        );
-
-        if (!matchesInclude) {
-          continue;
-        }
-
-        // Check if file matches exclude patterns
-        const matchesExclude = config.excludePatterns.some((pattern) =>
-          entry.name.match(pattern)
-        );
-
-        if (matchesExclude) {
-          continue;
-        }
-
         if (entry.isDirectory()) {
-          // Recurse into subdirectories
+          if (this.matchesAnyPattern(`${path.relative(rootPath, fullPath)}/`, config.excludePatterns)) {
+            continue;
+          }
           const subResults = await this.scanDirectory(fullPath, config);
           results.push(...subResults);
-        } else {
-          // It's a file
-          const result = await this.scan(entry.name, config);
+        } else if (
+          this.matchesAnyPattern(entry.name, config.includePatterns) &&
+          !this.matchesAnyPattern(path.relative(rootPath, fullPath), config.excludePatterns)
+        ) {
+          const result = await this.scan(fullPath, config);
           results.push(result);
         }
       }
@@ -473,5 +602,20 @@ export class TemplateScanner {
     }
 
     return results;
+  }
+
+  private matchesAnyPattern(value: string, patterns: string[]): boolean {
+    return patterns.some((pattern) => {
+      const optionalPrefix = pattern.startsWith('**/');
+      const normalizedPattern = pattern.replace(/^\*\*\//, '');
+      const expression = normalizedPattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*/g, '.*')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '.');
+      return new RegExp(`^${optionalPrefix ? '(?:.*/)?' : ''}${expression}$`).test(
+        value.replace(/\\/g, '/')
+      );
+    });
   }
 }

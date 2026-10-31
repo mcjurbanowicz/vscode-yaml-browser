@@ -9,6 +9,8 @@ export interface TemplateReference {
   path: string;
   /** Parameters passed to this template invocation */
   parameters: Record<string, unknown> | null;
+  /** Error when the invocation uses invalid parameter syntax */
+  parameterSyntaxError?: string;
   /** The depth level in the template hierarchy (0 = root) */
   depth: number;
   /** Unique identifier for this reference */

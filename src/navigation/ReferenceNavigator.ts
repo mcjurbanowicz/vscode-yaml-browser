@@ -33,6 +33,7 @@ export class ReferenceNavigator {
    */
   pushNode(node: TemplateTreeNode): void {
     this.navigationStack.push(node);
+    this.currentPath = this.navigationStack.map((entry) => entry.path);
     this.updateBreadcrumbDisplay();
   }
 
@@ -40,7 +41,7 @@ export class ReferenceNavigator {
    * Pop the last node from the navigation stack.
    */
   popNode(): TemplateTreeNode | null {
-    return this.navigationStack.pop();
+    return this.navigationStack.pop() ?? null;
   }
 
   /**
@@ -133,11 +134,11 @@ export class ReferenceNavigator {
    * Find a node by its path.
    */
   private findNodeByPath(path: string): TemplateTreeNode | null {
-    if (!this.treeProvider.tree) {
+    if (!this.treeProvider.rootNode) {
       return null;
     }
 
-    return this.findNodeRecursive(this.treeProvider.tree, path, 0);
+    return this.findNodeRecursive(this.treeProvider.rootNode, path, 0);
   }
 
   /**

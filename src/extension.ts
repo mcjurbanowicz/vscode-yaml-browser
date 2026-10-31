@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { CachingRegistry } from './caching/CachingRegistry';
-import { TemplateScanner, ScanConfig } from './scanner/TemplateScanner';
+import { TemplateScanner, ScanConfig, ScanResult } from './scanner/TemplateScanner';
 import { TemplateExplorerProvider, TemplateTreeNode } from './tree/TemplateExplorer';
 import { ReferenceNavigator } from './navigation/ReferenceNavigator';
-import { ExtensionSettingsManager, ExtensionSettings } from './extensionSettings';
+import { TemplateDocumentLinkProvider } from './navigation/TemplateDocumentLinks';
+import { ExtensionSettingsManager } from './extensionSettings';
 import { YamlValidator } from './validation/YamlValidator';
+import { TemplateNode, TemplateScanError } from './types/templateReference';
 
 /**
  * Azure DevOps YAML Inspector Extension
@@ -27,8 +29,11 @@ export class ADOYAMLInspectorExtension {
   private yamlValidator: YamlValidator;
   private treeProvider: TemplateExplorerProvider;
   private referenceNavigator: ReferenceNavigator;
-  private panel: vscode.WebviewPanel | null = null;
   private disposables: vscode.Disposable[] = [];
+  private readonly diagnostics: vscode.DiagnosticCollection;
+  private scanResults: ScanResult[] = [];
+  private scanDiagnostics = new Map<string, vscode.Diagnostic[]>();
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(extensionContext: vscode.ExtensionContext) {
     this.extensionContext = extensionContext;
@@ -45,9 +50,12 @@ export class ADOYAMLInspectorExtension {
     this.yamlValidator = new YamlValidator();
     this.treeProvider = new TemplateExplorerProvider();
     this.referenceNavigator = new ReferenceNavigator(this.treeProvider);
+    this.diagnostics = vscode.languages.createDiagnosticCollection('adoInspector');
 
     // Register disposables
     this.registerDisposables();
+    this.extensionContext.subscriptions.push(...this.disposables);
+    this.extensionContext.subscriptions.push(this.diagnostics);
 
     // Initialize on activation
     this.initialize();
@@ -88,19 +96,6 @@ export class ADOYAMLInspectorExtension {
       })
     );
 
-    // Panel provider
-    this.disposables.push(
-      vscode.window.registerWebviewViewProvider(
-        'adoInspectorPanel',
-        new YamlInspectorPanelProvider(this),
-        {
-          webviewOptions: {
-            retainContextWhenHidden: true,
-          },
-        }
-      )
-    );
-
     // Tree view provider
     this.disposables.push(
       vscode.window.registerTreeDataProvider(
@@ -109,10 +104,23 @@ export class ADOYAMLInspectorExtension {
       )
     );
 
+    this.disposables.push(
+      vscode.languages.registerDocumentLinkProvider(
+        { language: 'yaml', scheme: 'file' },
+        new TemplateDocumentLinkProvider()
+      )
+    );
+
     // File change listener
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument(
         (event) => this.onTextDocumentChange(event)
+      )
+    );
+
+    this.disposables.push(
+      vscode.workspace.onDidSaveTextDocument(
+        (document) => this.onDocumentSaved(document)
       )
     );
 
@@ -128,6 +136,23 @@ export class ADOYAMLInspectorExtension {
       vscode.workspace.onDidChangeWorkspaceFolders(
         () => this.onWorkspaceFolderChange()
       )
+    );
+
+    const yamlWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(
+        this.settingsManager.resolveScanRoot(),
+        '**/*.{yml,yaml}'
+      )
+    );
+    this.disposables.push(yamlWatcher);
+    this.disposables.push(
+      yamlWatcher.onDidChange((uri) => void this.onWatchedFileChange(uri.fsPath))
+    );
+    this.disposables.push(
+      yamlWatcher.onDidCreate((uri) => void this.onWatchedFileChange(uri.fsPath))
+    );
+    this.disposables.push(
+      yamlWatcher.onDidDelete((uri) => void this.onWatchedFileChange(uri.fsPath))
     );
   }
 
@@ -164,6 +189,9 @@ export class ADOYAMLInspectorExtension {
     console.log(`[ADO Inspector] Scanning: ${scanRoot} (maxDepth: ${config.maxDepth})`);
 
     const results = await this.templateScanner.scanDirectory(scanRoot, config);
+    this.scanResults = results;
+    this.publishTemplateDiagnostics();
+    this.updateTreeForActiveDocument();
 
     console.log(
       `[ADO Inspector] Scan complete. Found ${results.length} files.`
@@ -195,11 +223,28 @@ export class ADOYAMLInspectorExtension {
       return;
     }
 
-    // This would use the navigator to find the parent file
-    // For now, show a message
-    vscode.window.showInformationMessage(
-      'Open Referencing File: Feature under development.'
+    const currentPath = path.resolve(activeEditor.document.uri.fsPath);
+    const references = this.scanResults
+      .flatMap((result) => result.tree.references)
+      .filter((reference) => path.resolve(reference.path) === currentPath);
+    const sources = [...new Set(references.map((reference) => reference.sourceFile))];
+    if (sources.length === 0) {
+      vscode.window.showInformationMessage('No references found in the configured scan folder.');
+      return;
+    }
+
+    const selected = await vscode.window.showQuickPick(
+      sources.map((source) => ({
+        label: path.basename(source),
+        description: source,
+        source,
+      })),
+      { placeHolder: 'Open a file that references this template' }
     );
+    if (selected) {
+      const document = await vscode.workspace.openTextDocument(selected.source);
+      await vscode.window.showTextDocument(document);
+    }
   }
 
   /**
@@ -212,32 +257,154 @@ export class ADOYAMLInspectorExtension {
   /**
    * Handle text document changes.
    */
-  private async onTextDocumentChange(event: vscode.TextDocumentChangeEvent): Promise<void> {
+  private onTextDocumentChange(event: vscode.TextDocumentChangeEvent): void {
     const document = event.document;
+    if (document.languageId === 'yaml') {
+      this.validateDocument(document);
+    }
+  }
 
-    // Only handle YAML files
-    if (document.languageId !== 'yaml') {
+  private async onDocumentSaved(document: vscode.TextDocument): Promise<void> {
+    if (document.languageId === 'yaml') {
+      await this.onWatchedFileChange(document.uri.fsPath);
+    }
+  }
+
+  private onWatchedFileChange(filePath: string): void {
+    const changedPath = path.resolve(filePath);
+    this.cachingRegistry.delete(changedPath);
+    for (const [cachedPath, entry] of this.cachingRegistry.getAllEntries()) {
+      if (entry.data.references.some((reference) => path.resolve(reference.path) === changedPath)) {
+        this.cachingRegistry.delete(cachedPath);
+      }
+    }
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+    }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      void this.scanAllTemplates();
+    }, 150);
+  }
+
+  private validateDocument(document: vscode.TextDocument): void {
+    const diagnostics = this.yamlValidator
+      .validate(document.getText(), document.fileName)
+      .map((item) => {
+        const severity = item.severity === 'error'
+          ? vscode.DiagnosticSeverity.Error
+          : item.severity === 'warning'
+            ? vscode.DiagnosticSeverity.Warning
+            : vscode.DiagnosticSeverity.Information;
+        const line = Math.max(0, item.line - 1);
+        const character = Math.max(0, item.column - 1);
+        const diagnostic = new vscode.Diagnostic(
+          new vscode.Range(line, character, line, character + 1),
+          item.message,
+          severity
+        );
+        diagnostic.code = item.code;
+        diagnostic.source = 'Azure DevOps YAML Inspector';
+        return diagnostic;
+      });
+    this.diagnostics.set(document.uri, [
+      ...diagnostics,
+      ...(this.scanDiagnostics.get(document.uri.fsPath) ?? []),
+    ]);
+  }
+
+  private publishTemplateDiagnostics(): void {
+    const grouped = new Map<string, vscode.Diagnostic[]>();
+    const seen = new Set<string>();
+    for (const result of this.scanResults) {
+      for (const issue of result.errors) {
+        const key = `${issue.file}|${issue.line}|${issue.column}|${issue.message}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        const fileDiagnostics = grouped.get(issue.file) ?? [];
+        fileDiagnostics.push(this.toDiagnostic(issue));
+        grouped.set(issue.file, fileDiagnostics);
+      }
+    }
+
+    for (const oldPath of this.scanDiagnostics.keys()) {
+      if (!grouped.has(oldPath)) {
+        this.diagnostics.delete(vscode.Uri.file(oldPath));
+      }
+    }
+    this.scanDiagnostics = grouped;
+    for (const [filePath, fileDiagnostics] of grouped) {
+      this.diagnostics.set(vscode.Uri.file(filePath), fileDiagnostics);
+    }
+    for (const document of vscode.workspace.textDocuments) {
+      if (document.languageId === 'yaml') {
+        this.validateDocument(document);
+      }
+    }
+  }
+
+  private toDiagnostic(issue: TemplateScanError): vscode.Diagnostic {
+    const severity = issue.type === 'error'
+      ? vscode.DiagnosticSeverity.Error
+      : issue.type === 'warning'
+        ? vscode.DiagnosticSeverity.Warning
+        : vscode.DiagnosticSeverity.Information;
+    const line = Math.max(0, issue.line - 1);
+    const character = Math.max(0, issue.column - 1);
+    const diagnostic = new vscode.Diagnostic(
+      new vscode.Range(line, character, line, character + 1),
+      issue.message,
+      severity
+    );
+    diagnostic.code = 'ADO_TEMPLATE_REFERENCE';
+    diagnostic.source = 'Azure DevOps YAML Inspector';
+    return diagnostic;
+  }
+
+  private updateTreeForActiveDocument(): void {
+    const activeDocument = vscode.window.activeTextEditor?.document;
+    if (!activeDocument) {
+      this.treeProvider.setTree(this.scanResults[0]?.tree ?? null);
       return;
     }
 
-    // Check if the file is in the cache
-    const fileUri = document.uri.toString();
-    const cached = this.cachingRegistry.has(fileUri);
+    const activePath = path.resolve(activeDocument.uri.fsPath);
+    const incomingReferences = this.scanResults
+      .flatMap((result) => result.tree.references)
+      .filter((reference) => path.resolve(reference.path) === activePath);
+    const referencingFiles = [...new Set(incomingReferences.map((reference) => reference.sourceFile))];
 
-    if (cached) {
-      console.log(
-        `[ADO Inspector] Document changed: ${document.fileName} (cache hit)`
-      );
-      // The cache already has the result, no need to re-scan
-      // In a more sophisticated implementation, we'd check if the change
-      // affects template references and only re-scan if needed
-    } else {
-      console.log(
-        `[ADO Inspector] Document changed: ${document.fileName} (cache miss)`
-      );
-      // Trigger a background scan
-      this.scheduleScan(fileUri);
+    if (referencingFiles.length > 0) {
+      const root: TemplateNode = {
+        path: activePath,
+        depth: 0,
+        isRoot: true,
+        parameters: null,
+        referencedLine: 0,
+        children: referencingFiles.map((sourceFile) => ({
+          path: sourceFile,
+          depth: 1,
+          isRoot: false,
+          parameters: null,
+          referencedLine: 0,
+          children: [],
+        })),
+      };
+      this.treeProvider.setTree({
+        root: activePath,
+        tree: root,
+        references: incomingReferences,
+        errors: [],
+      });
+      return;
     }
+
+    const activeResult = this.scanResults.find(
+      (result) => path.resolve(result.tree.root) === activePath
+    );
+    this.treeProvider.setTree(activeResult?.tree ?? this.scanResults[0]?.tree ?? null);
   }
 
   /**
@@ -248,18 +415,14 @@ export class ADOYAMLInspectorExtension {
       return;
     }
 
-    const fileUri = document.uri.toString();
-    const cached = this.cachingRegistry.has(fileUri);
+    this.validateDocument(document);
+    const filePath = document.uri.fsPath;
+    const cached = this.cachingRegistry.get(filePath);
 
     if (cached) {
-      console.log(
-        `[ADO Inspector] Document opened: ${document.fileName} (cache hit)`
-      );
+      this.updateTreeForActiveDocument();
     } else {
-      console.log(
-        `[ADO Inspector] Document opened: ${document.fileName} (cache miss)`
-      );
-      this.scheduleScan(fileUri);
+      this.scheduleScan(filePath);
     }
   }
 
@@ -274,18 +437,7 @@ export class ADOYAMLInspectorExtension {
   /**
    * Schedule a scan to run in the background.
    */
-  private scheduleScan(fileUri: string): void {
-    // Schedule a background scan
-    const uri = vscode.Uri.parse(fileUri);
-    const relativePath = vscode.workspace
-      ? vscode.workspace.workspaceFolders
-        ? path.relative(
-            vscode.workspace.workspaceFolders[0].uri.fsPath,
-            uri.fsPath
-          )
-        : uri.fsPath
-      : uri.fsPath;
-
+  private scheduleScan(filePath: string): void {
     // Use setTimeout to avoid blocking the UI
     setTimeout(async () => {
       try {
@@ -296,7 +448,13 @@ export class ADOYAMLInspectorExtension {
           excludePatterns: this.settingsManager.settings.excludePatterns,
         };
 
-        const result = await this.templateScanner.scan(relativePath, config);
+        const result = await this.templateScanner.scan(filePath, config);
+        this.scanResults = [
+          ...this.scanResults.filter((item) => path.resolve(item.tree.root) !== path.resolve(filePath)),
+          result,
+        ];
+        this.publishTemplateDiagnostics();
+        this.updateTreeForActiveDocument();
 
         // Persist cache
         if (this.settingsManager.settings.cacheEnabled) {
@@ -304,11 +462,11 @@ export class ADOYAMLInspectorExtension {
         }
 
         console.log(
-          `[ADO Inspector] Scan complete for: ${relativePath}. Errors: ${result.errors.length}`
+          `[ADO Inspector] Scan complete for: ${filePath}. Errors: ${result.errors.length}`
         );
       } catch (error) {
         console.error(
-          `[ADO Inspector] Scan failed for ${fileUri}:`,
+          `[ADO Inspector] Scan failed for ${filePath}:`,
           error
         );
       }
@@ -346,3 +504,9 @@ export class ADOYAMLInspectorExtension {
     return cachePath;
   }
 }
+
+export function activate(context: vscode.ExtensionContext): void {
+  new ADOYAMLInspectorExtension(context);
+}
+
+export function deactivate(): void {}

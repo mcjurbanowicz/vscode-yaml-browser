@@ -3,7 +3,9 @@ import * as path from 'path';
 import { TemplateReferenceTree } from '../types/templateReference';
 
 export interface CacheEntry {
+  fileUri: string;
   data: TemplateReferenceTree;
+  fileSignatures?: Record<string, number>;
   timestamp: number;
   accessedAt: number;
   hitCount: number;
@@ -23,6 +25,7 @@ export class CachingRegistry {
   private readonly maxSize: number;
   private readonly cachePath: string;
   private readonly cacheFileName: string;
+  private readonly enabled: boolean;
   private metrics: CacheMetrics;
   private readonly accessLog: string[];
 
@@ -33,6 +36,7 @@ export class CachingRegistry {
   ) {
     this.cachePath = cachePath;
     this.cacheFileName = 'ado-cache.json';
+    this.enabled = enabled;
     this.maxSize = maxEntries;
     this.metrics = {
       hits: 0,
@@ -52,8 +56,6 @@ export class CachingRegistry {
       });
     }
 
-    // Restore cache from disk if enabled
-    this.restoreFromDisk();
   }
 
   /**
@@ -90,7 +92,9 @@ export class CachingRegistry {
     this.metrics.misses++;
     const result = await build();
     this.cache.set(fileUri, {
+      fileUri,
       data: result,
+      fileSignatures: {},
       timestamp: Date.now(),
       accessedAt: Date.now(),
       hitCount: 0,
@@ -145,6 +149,10 @@ export class CachingRegistry {
    * Save the cache to disk.
    */
   async persist(): Promise<void> {
+    if (!this.enabled) {
+      return;
+    }
+
     const cacheData = Array.from(this.cache.entries()).map(
       ([fileUri, entry]) => ({
         fileUri,
@@ -155,8 +163,7 @@ export class CachingRegistry {
       })
     );
 
-    const cacheDir = path.dirname(this.cachePath);
-    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.mkdir(this.cachePath, { recursive: true });
 
     await fs.writeFile(
       path.join(this.cachePath, this.cacheFileName),
@@ -173,7 +180,7 @@ export class CachingRegistry {
    * Restore the cache from disk.
    */
   async restoreFromDisk(): Promise<void> {
-    if (!fs.existsSync(this.cachePath)) {
+    if (!this.enabled) {
       return;
     }
 
@@ -193,6 +200,9 @@ export class CachingRegistry {
         `[ADO Inspector] Cache restored: ${this.cache.size} entries`
       );
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return;
+      }
       console.warn(
         `[ADO Inspector] Could not restore cache: ${error}`
       );
@@ -227,6 +237,43 @@ export class CachingRegistry {
    */
   has(fileUri: string): boolean {
     return this.cache.has(fileUri);
+  }
+
+  delete(fileUri: string): boolean {
+    const deleted = this.cache.delete(fileUri);
+    this.metrics.currentSize = this.cache.size;
+    return deleted;
+  }
+
+  get(fileUri: string): TemplateReferenceTree | undefined {
+    return this.getCached(fileUri)?.data;
+  }
+
+  getEntry(fileUri: string): CacheEntry | undefined {
+    return this.getCached(fileUri);
+  }
+
+  set(
+    fileUri: string,
+    data: TemplateReferenceTree,
+    fileSignatures: Record<string, number> = {}
+  ): void {
+    if (!this.enabled) {
+      return;
+    }
+
+    this.cache.set(fileUri, {
+      fileUri,
+      data,
+      fileSignatures,
+      timestamp: Date.now(),
+      accessedAt: Date.now(),
+      hitCount: 0,
+    });
+    this.metrics.currentSize = this.cache.size;
+    if (this.cache.size > this.maxSize) {
+      this.evictOldest();
+    }
   }
 
   /**

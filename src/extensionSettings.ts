@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as os from 'os';
 import * as vscode from 'vscode';
 
 export interface ExtensionSettings {
@@ -92,7 +93,7 @@ export class ExtensionSettingsManager {
     additionalProperties: false,
   };
 
-  private settings: ExtensionSettings;
+  settings: ExtensionSettings;
 
   constructor() {
     this.settings = this.loadSettings();
@@ -106,7 +107,7 @@ export class ExtensionSettingsManager {
 
     return {
       enabled: config.get<boolean>('enabled', true),
-      scanRoot: config.get<string>('scanRoot', '${workspaceFolder}'),
+      scanRoot: config.get<string>('scanRoot', '.'),
       includePatterns: config.get<string[]>('includePatterns', [
         '*.yml',
         '*.yaml',
@@ -157,6 +158,10 @@ export class ExtensionSettingsManager {
       return this.settings.scanRoot;
     }
 
+    if (this.settings.scanRoot === '${workspaceFolder}' || this.settings.scanRoot === '.') {
+      return workspaceFolder;
+    }
+
     // If scanRoot is relative, resolve it relative to the workspace
     if (!path.isAbsolute(this.settings.scanRoot)) {
       return path.resolve(workspaceFolder, this.settings.scanRoot);
@@ -169,15 +174,30 @@ export class ExtensionSettingsManager {
    * Get the workspace folder URI.
    */
   getWorkspaceFolderUri(): vscode.Uri | null {
-    return vscode.workspace.workspaceFolders?.[0]?.uri;
+    return vscode.workspace.workspaceFolders?.[0]?.uri ?? null;
+  }
+
+  resolveCachePath(): string {
+    const configuredPath = this.settings.cachePath;
+    if (configuredPath === '~') {
+      return os.homedir();
+    }
+    if (configuredPath.startsWith('~/')) {
+      return path.join(os.homedir(), configuredPath.slice(2));
+    }
+    return path.resolve(configuredPath);
   }
 
   /**
    * Check if a file should be included in the scan.
    */
-  shouldIncludeFile(filePath: string): boolean {
-    const stat = vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-    if (stat === undefined || stat.type === vscode.FileType.Directory) {
+  async shouldIncludeFile(filePath: string): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+      if (stat.type === vscode.FileType.Directory) {
+        return false;
+      }
+    } catch {
       return false;
     }
 

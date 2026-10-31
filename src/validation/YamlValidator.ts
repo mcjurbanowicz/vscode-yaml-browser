@@ -369,50 +369,18 @@ export class YamlValidator {
 
     const strategyObj = strategy as Record<string, unknown>;
 
-    // Validate matrix strategy
-    if (strategyObj.matrix) {
-      if (typeof strategyObj.matrix === 'object') {
-        const matrix = strategyObj.matrix as Record<string, unknown>;
-        if (matrix.strategy) {
-          if (
-            matrix.strategy.strategy === 'combinatorial' &&
-            matrix.strategy.maxParallel !== undefined
-          ) {
-            if (typeof matrix.strategy.maxParallel === 'string') {
-              this.diagnostics.push({
-                file: filePath,
-                line: this.getLineNumber(matrix.strategy, 'maxParallel'),
-                column: 1,
-                message: 'maxParallel should be a number, not a string.',
-                severity: 'warning' as const,
-                code: 'INVALID_MAX_PARALLEL',
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // Validate matrix strategy
-    if (strategyObj.matrix && typeof strategyObj.matrix === 'object') {
-      const matrix = strategyObj.matrix as Record<string, unknown>;
-      if (matrix.strategy) {
-        if (matrix.strategy.strategy === 'matrix') {
-          if (
-            typeof matrix.strategy.maxParallel === 'string' &&
-            matrix.strategy.maxParallel !== '1'
-          ) {
-            this.diagnostics.push({
-              file: filePath,
-              line: this.getLineNumber(matrix.strategy, 'maxParallel'),
-              column: 1,
-              message: 'maxParallel should be a number, not a string.',
-              severity: 'warning' as const,
-              code: 'INVALID_MAX_PARALLEL',
-            });
-          }
-        }
-      }
+    if (
+      strategyObj.maxParallel !== undefined &&
+      typeof strategyObj.maxParallel !== 'number'
+    ) {
+      this.diagnostics.push({
+        file: filePath,
+        line: this.getLineNumber(strategyObj, 'maxParallel'),
+        column: 1,
+        message: 'maxParallel should be a number.',
+        severity: 'warning' as const,
+        code: 'INVALID_MAX_PARALLEL',
+      });
     }
   }
 
