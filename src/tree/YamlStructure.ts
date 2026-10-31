@@ -25,6 +25,12 @@ const sectionNames = [
   'steps',
 ];
 
+const entryIcons = {
+  stage: { concrete: 'symbol-class', template: 'symbol-interface' },
+  job: { concrete: 'symbol-method', template: 'symbol-function' },
+  step: { concrete: 'symbol-event', template: 'symbol-operator' },
+};
+
 function scalarValue(node: unknown): unknown {
   return node instanceof Scalar ? node.value : undefined;
 }
@@ -103,7 +109,7 @@ function sectionNode(
 function namedEntry(
   node: unknown,
   index: number,
-  kind: string,
+  kind: 'stage' | 'job' | 'step',
   options: YamlStructureOptions,
   idPrefix = ''
 ): YamlStructureNode {
@@ -126,9 +132,11 @@ function namedEntry(
     ? ['script', 'bash', 'pwsh', 'powershell', 'checkout', 'publish', 'download', 'template']
       .find((key) => mapPair(entryNode, key) !== undefined)
     : undefined;
+  const namedLabel = kind === 'step' && explicitName && displayName
+    ? `${explicitName} / ${displayName}`
+    : explicitName ?? displayName;
   const label = templateName
-    ?? explicitName
-    ?? displayName
+    ?? namedLabel
     ?? stageOrJobName
     ?? (taskType ? `# ${taskType}` : stepType)
     ?? `${kind} ${index + 1}`;
@@ -172,17 +180,7 @@ function namedEntry(
       const entries = kind === 'stage'
         ? buildEntries(childrenPair.value, 'job', options, id)
         : buildEntries(childrenPair.value, 'step', options, `${id}-${jobsOrSteps}`);
-      if (kind === 'stage') {
-        children.push(...entries);
-      } else {
-        children.push(sectionNode(
-          `${id}-${jobsOrSteps}`,
-          `${jobsOrSteps} >`,
-          childrenPair.value,
-          pairOffset(childrenPair),
-          entries
-        ));
-      }
+      children.push(...entries);
     }
   }
 
@@ -193,9 +191,7 @@ function namedEntry(
     templateReference ? pairOffset(templateReference.pair) : offsetOf(node),
     children
   );
-  if (templateName) {
-    entry.icon = 'file-symlink-file';
-  }
+  entry.icon = entryIcons[kind][templateName ? 'template' : 'concrete'];
   return entry;
 }
 

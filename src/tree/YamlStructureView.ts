@@ -87,13 +87,14 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
       }
       seen.add(id);
 
-      const label = path.basename(targetPath);
+      const label = path.relative(path.dirname(activePath), targetPath)
+        .split(path.sep)
+        .join('/');
       const item = new YamlStructureItem(
         label,
         vscode.TreeItemCollapsibleState.None,
         targetPath,
-        0,
-        targetPath
+        0
       );
       item.id = id;
       item.iconPath = new vscode.ThemeIcon('file');

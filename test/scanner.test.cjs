@@ -203,9 +203,13 @@ test('builds a clickable YAML overview with optional conditions and parameters',
   assert.ok(findNode(nodes, 'stage-0-job-0-condition'));
   assert.ok(findNode(nodes, 'stage-0-job-0-parameters'));
   assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-0').label, 'Run tests');
+  assert.ok(findNode(nodes, 'stage-0-job-0').children.some((node) => node.label === 'Run tests'));
   assert.ok(findNode(nodes, 'stage-0-job-0-steps-step-0-condition'));
   assert.ok(findNode(nodes, 'stage-0-job-0-steps-step-0-parameters'));
   assert.ok(nodes.every((node) => node.label !== 'jobs >'));
+  assert.ok(
+    findNode(nodes, 'stage-0-job-0').children.every((node) => node.label !== 'steps >')
+  );
   assert.equal(content.slice(findNode(nodes, 'stage-0').offset).startsWith('stage: Build'), true);
 
   const hiddenDetails = buildYamlStructure(content, {
@@ -233,6 +237,7 @@ test('prefers explicit names and numbers duplicate step labels and task types', 
     '            displayName: Step display',
     '            pwsh: Write-Output first',
     '          - name: FirstNamedStep',
+    '            displayName: Step display',
     '            pwsh: Write-Output second',
     '          - task: DownloadPipelineArtifact@2',
     '          - task: DownloadPipelineArtifact@2',
@@ -255,9 +260,18 @@ test('prefers explicit names and numbers duplicate step labels and task types', 
   };
 
   assert.equal(findNode(nodes, 'stage-0').label, 'Stage display');
+  assert.equal(findNode(nodes, 'stage-0').icon, 'symbol-class');
   assert.equal(findNode(nodes, 'stage-0-job-0').label, 'Job display');
-  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-0').label, 'FirstNamedStep #1');
-  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-1').label, 'FirstNamedStep #2');
+  assert.equal(findNode(nodes, 'stage-0-job-0').icon, 'symbol-method');
+  assert.equal(
+    findNode(nodes, 'stage-0-job-0-steps-step-0').label,
+    'FirstNamedStep / Step display #1'
+  );
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-0').icon, 'symbol-event');
+  assert.equal(
+    findNode(nodes, 'stage-0-job-0-steps-step-1').label,
+    'FirstNamedStep / Step display #2'
+  );
   assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-2').label, '# DownloadPipelineArtifact@2 #1');
   assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-3').label, '# DownloadPipelineArtifact@2 #2');
   assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-4').label, 'pwsh #1');
@@ -304,7 +318,12 @@ test('labels stage, job, and step template references by filename with a distinc
     'deploy-job.yml',
     'deploy-steps.yml',
   ]);
-  assert.ok(templateNodes.every(({ icon }) => icon === 'file-symlink-file'));
+  assert.deepEqual(templateNodes.map(({ icon }) => icon), [
+    'symbol-interface',
+    'symbol-interface',
+    'symbol-function',
+    'symbol-operator',
+  ]);
   assert.equal(
     templateNodes[1].offset,
     content.indexOf('template: stages/conditional-stage.yml')
