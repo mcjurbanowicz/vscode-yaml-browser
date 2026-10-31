@@ -9,6 +9,7 @@ import { ExtensionSettingsManager } from './extensionSettings';
 import { YamlValidator } from './validation/YamlValidator';
 import { TemplateNode, TemplateScanError } from './types/templateReference';
 import { YamlStructureItem, YamlStructureViewProvider } from './tree/YamlStructureView';
+import { TemplateExpander } from './templates/TemplateExpander';
 
 /**
  * Azure DevOps YAML Inspector Extension
@@ -29,10 +30,12 @@ export class ADOYAMLInspectorExtension {
   private templateScanner: TemplateScanner;
   private yamlValidator: YamlValidator;
   private treeProvider: TemplateExplorerProvider;
+  private readonly templateTreeView: vscode.TreeView<TemplateTreeNode>;
   private readonly structureTreeProvider: YamlStructureViewProvider;
   private readonly structureTreeView: vscode.TreeView<YamlStructureItem>;
   private disposables: vscode.Disposable[] = [];
   private readonly diagnostics: vscode.DiagnosticCollection;
+  private readonly templateExpander = new TemplateExpander();
   private scanResults: ScanResult[] = [];
   private scanDiagnostics = new Map<string, vscode.Diagnostic[]>();
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -51,6 +54,10 @@ export class ADOYAMLInspectorExtension {
     );
     this.yamlValidator = new YamlValidator();
     this.treeProvider = new TemplateExplorerProvider();
+    this.templateTreeView = vscode.window.createTreeView(
+      'adoInspectorPanelTemplateExplorer',
+      { treeDataProvider: this.treeProvider }
+    );
     this.structureTreeProvider = new YamlStructureViewProvider();
     this.structureTreeView = vscode.window.createTreeView(
       'adoInspectorPanelStructureTree',
@@ -61,6 +68,7 @@ export class ADOYAMLInspectorExtension {
     // Register disposables
     this.registerDisposables();
     this.extensionContext.subscriptions.push(...this.disposables);
+    this.extensionContext.subscriptions.push(this.templateTreeView);
     this.extensionContext.subscriptions.push(this.structureTreeView);
     this.extensionContext.subscriptions.push(this.diagnostics);
     this.extensionContext.subscriptions.push(this.structureTreeProvider);
@@ -132,6 +140,12 @@ export class ADOYAMLInspectorExtension {
     this.disposables.push(
       vscode.commands.registerCommand('adoInspector.validateYaml', () => {
         this.validateActiveYaml();
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.expandTemplates', async () => {
+        await this.expandActiveTemplates();
       })
     );
 
@@ -348,6 +362,29 @@ export class ADOYAMLInspectorExtension {
       new vscode.Range(position, position),
       vscode.TextEditorRevealType.InCenter
     );
+  }
+
+  private async expandActiveTemplates(): Promise<void> {
+    const document = vscode.window.activeTextEditor?.document;
+    if (!document || document.languageId !== 'yaml') {
+      vscode.window.showErrorMessage('Open a YAML file before expanding templates.');
+      return;
+    }
+
+    try {
+      const content = await this.templateExpander.expand(
+        document.uri.fsPath,
+        document.getText()
+      );
+      const expandedDocument = await vscode.workspace.openTextDocument({
+        language: 'yaml',
+        content,
+      });
+      await vscode.window.showTextDocument(expandedDocument, { preview: false });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Could not expand templates: ${message}`);
+    }
   }
 
   private async foldActiveYaml(command: 'editor.foldAll' | 'editor.unfoldAll'): Promise<void> {

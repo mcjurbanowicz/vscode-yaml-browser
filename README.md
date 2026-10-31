@@ -24,14 +24,19 @@ npm run compile
 
 ## YAML Inspector panel
 
-The **YAML Inspector** panel contains a **YAML Structure** view showing the active YAML file's parameters,
-variables, schedules, triggers, stages, jobs, and steps. Select an item to jump
-to its source location. The expandable **Template references** group lists local
-files referenced by the active file and files that reference it.
+The **YAML Inspector** panel contains a **Template Explorer** view for navigating
+the active file's template references and a **YAML Structure** view showing its
+parameters, variables, schedules, triggers, stages, jobs, and steps. Select an
+item to jump to its source location. The expandable **Template references**
+group lists local files referenced by the active file and files that reference it.
 
 Use **Collapse Structure Tree** and **Expand Structure Tree** to control the
 outline independently of **Collapse YAML** and **Expand YAML**, which fold or
 unfold the active editor. **Validate YAML** refreshes diagnostics for that file.
+The **Expand Templates** toolbar button opens an editable, unsaved YAML document
+with local stage, job, and step templates recursively inlined. Simple template
+parameter references are substituted; compile-time `if` and `each` expressions
+remain unchanged. The source pipeline and templates are not modified.
 Optional conditions and stage, job, and step parameters
 can be enabled with the `adoInspector.showConditions`,
 `adoInspector.showStageParameters`, `adoInspector.showJobParameters`, and

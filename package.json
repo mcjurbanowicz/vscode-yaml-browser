@@ -2,7 +2,7 @@
   "name": "ado-yaml-inspector",
   "displayName": "Azure DevOps YAML Inspector",
   "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "publisher": "ado-inspector",
   "engines": {
     "vscode": "^1.96.0"
@@ -141,6 +141,11 @@
         "category": "Azure DevOps YAML Inspector"
       },
       {
+        "command": "adoInspector.expandTemplates",
+        "title": "Azure DevOps: Expand Templates",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
         "command": "adoInspector.toggleShowConditions",
         "title": "Azure DevOps: Toggle Show Conditions",
         "category": "Azure DevOps YAML Inspector"
@@ -200,6 +205,10 @@
           "when": "config.adoInspector.enabled && editorLangId == yaml"
         },
         {
+          "command": "adoInspector.expandTemplates",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
           "command": "adoInspector.toggleShowConditions",
           "when": "config.adoInspector.enabled && editorLangId == yaml"
         },
@@ -237,6 +246,13 @@
           "group": "navigation",
           "title": "Validate YAML",
           "icon": "$(check)"
+        },
+        {
+          "command": "adoInspector.expandTemplates",
+          "when": "(view == adoInspectorPanelStructureTree || view == adoInspectorPanelTemplateExplorer) && editorLangId == yaml",
+          "group": "navigation",
+          "title": "Expand Templates",
+          "icon": "$(layers)"
         },
         {
           "command": "adoInspector.collapseStructureTree",
@@ -414,6 +430,10 @@
     },
     "views": {
       "adoInspectorPanel": [
+        {
+          "id": "adoInspectorPanelTemplateExplorer",
+          "name": "Template Explorer"
+        },
         {
           "id": "adoInspectorPanelStructureTree",
           "name": "YAML Structure"

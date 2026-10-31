@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.10
+- Restored the Template Explorer view in the YAML Inspector panel.
+- Added a panel action to recursively expand local templates into an editable YAML document, substituting simple parameter references.
+- Kept Azure compile-time `if` and `each` expressions unchanged in expanded output.
+
 ## 0.0.9
 - Fixed expand/collapse controls so they update the YAML Structure tree.
 

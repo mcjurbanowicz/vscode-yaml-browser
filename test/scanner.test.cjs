@@ -6,8 +6,10 @@ const test = require('node:test');
 const { CachingRegistry } = require('../out/caching/CachingRegistry');
 const { TemplateScanner } = require('../out/scanner/TemplateScanner');
 const { YamlValidator } = require('../out/validation/YamlValidator');
+const { TemplateExpander } = require('../out/templates/TemplateExpander');
 const { buildYamlStructure } = require('../out/tree/YamlStructure');
 const { referenceDisplayPath } = require('../out/tree/referencePath');
+const yaml = require('yaml');
 
 const pipelineRoot = path.resolve(__dirname, '..', 'test-data', 'pipelines');
 const config = {
@@ -16,6 +18,98 @@ const config = {
   includePatterns: ['*.yml', '*.yaml'],
   excludePatterns: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
 };
+
+test('expands nested stage, job, and step templates with parameters', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-expand-'));
+  t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
+
+  const templatesDirectory = path.join(fixtureRoot, 'templates');
+  await fs.mkdir(path.join(templatesDirectory, 'jobs'), { recursive: true });
+  await fs.mkdir(path.join(templatesDirectory, 'steps'), { recursive: true });
+  const pipeline = [
+    'parameters:',
+    '  - name: stageName',
+    '    default: Build',
+    'stages:',
+    '  - template: templates/stages.yml',
+    '    parameters:',
+    '      stageName: ${{ parameters.stageName }}',
+  ].join('\n');
+  await fs.writeFile(
+    path.join(templatesDirectory, 'stages.yml'),
+    [
+      'parameters:',
+      '  - name: stageName',
+      '    default: DefaultStage',
+      'stages:',
+      '  - stage: ${{ parameters.stageName }}',
+      '    jobs:',
+      '      - template: jobs/build.yml',
+      '        parameters:',
+      '          scriptText: echo from job',
+    ].join('\n')
+  );
+  await fs.writeFile(
+    path.join(templatesDirectory, 'jobs', 'build.yml'),
+    [
+      'parameters:',
+      '  - name: scriptText',
+      '    default: echo default',
+      'jobs:',
+      '  - job: BuildJob',
+      '    steps:',
+      '      - template: ../steps/commands.yml',
+      '        parameters:',
+      '          commands:',
+      '            - script: ${{ parameters.scriptText }}',
+      '            - script: echo from parameter list',
+    ].join('\n')
+  );
+  await fs.writeFile(
+    path.join(templatesDirectory, 'steps', 'commands.yml'),
+    [
+      'parameters:',
+      '  - name: commands',
+      '    type: stepList',
+      '    default: []',
+      'steps:',
+      '  - ${{ parameters.commands }}',
+      '  - script: echo from steps template',
+    ].join('\n')
+  );
+
+  const result = await new TemplateExpander().expand(
+    path.join(fixtureRoot, 'pipeline.yml'),
+    pipeline
+  );
+  const expanded = yaml.parse(result);
+
+  assert.equal(expanded.stages[0].stage, 'Build');
+  assert.equal(expanded.stages[0].jobs[0].job, 'BuildJob');
+  assert.deepEqual(
+    expanded.stages[0].jobs[0].steps.map((step) => step.script),
+    ['echo from job', 'echo from parameter list', 'echo from steps template']
+  );
+  assert.equal(result.includes('template:'), false);
+});
+
+test('reports circular local template references while expanding', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-expand-'));
+  t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
+
+  const pipelinePath = path.join(fixtureRoot, 'pipeline.yml');
+  const pipeline = 'steps:\n  - template: nested.yml\n';
+  await fs.writeFile(pipelinePath, pipeline);
+  await fs.writeFile(
+    path.join(fixtureRoot, 'nested.yml'),
+    'steps:\n  - template: pipeline.yml\n'
+  );
+
+  await assert.rejects(
+    new TemplateExpander().expand(pipelinePath, pipeline),
+    /Circular template reference/
+  );
+});
 
 test('displays reference paths from their highest shared directory', () => {
   const root = path.join(os.tmpdir(), 'ado-yaml-reference-paths');
