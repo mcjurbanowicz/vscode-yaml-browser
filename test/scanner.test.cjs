@@ -214,9 +214,11 @@ test('builds a clickable YAML overview with optional conditions and parameters',
     'stages >',
   ]);
   assert.equal(findNode(nodes, 'parameter-0').label, 'region');
+  assert.equal(findNode(nodes, 'parameter-0').iconColor, 'foreground');
   assert.equal(findNode(nodes, 'stage-0').label, 'Build stage');
   assert.ok(findNode(nodes, 'stage-0-condition'));
   assert.ok(findNode(nodes, 'stage-0-parameters'));
+  assert.equal(findNode(nodes, 'stage-0-parameters').iconColor, 'foreground');
   assert.equal(findNode(nodes, 'stage-0-job-0').label, 'Compile job');
   assert.ok(findNode(nodes, 'stage-0-job-0-condition'));
   assert.ok(findNode(nodes, 'stage-0-job-0-parameters'));

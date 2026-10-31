@@ -106,13 +106,15 @@ function sectionNode(
   label: string,
   node: unknown,
   offset: number,
-  children: YamlStructureNode[] = []
+  children: YamlStructureNode[] = [],
+  iconColor?: string
 ): YamlStructureNode {
   return {
     id,
     label,
     offset,
     children,
+    iconColor,
   };
 }
 
@@ -178,7 +180,8 @@ function namedEntry(
         'parameters >',
         parametersPair.value,
         pairOffset(parametersPair),
-        valueEntries(parametersPair.value, `${id}-parameters`)
+        valueEntries(parametersPair.value, `${id}-parameters`),
+        'foreground'
       ));
     }
   }
@@ -244,7 +247,8 @@ function buildEntries(
         name,
         item,
         offsetOf(item),
-        []
+        [],
+        kind === 'parameter' ? 'foreground' : undefined
       );
     });
     return kind === 'stage' || kind === 'job' || kind === 'step'
@@ -259,7 +263,9 @@ function buildEntries(
         idPrefix ? `${idPrefix}-${kind}-${index}` : `${kind}-${index}`,
         name,
         pair.value,
-        pairOffset(pair)
+        pairOffset(pair),
+        [],
+        kind === 'parameter' ? 'foreground' : undefined
       );
     });
   }
@@ -276,7 +282,9 @@ function valueEntries(node: unknown, prefix: string): YamlStructureNode[] {
         `${prefix}-${index}`,
         value === undefined ? key : `${key}: ${value}`,
         pair.value,
-        pairOffset(pair)
+        pairOffset(pair),
+        [],
+        'foreground'
       );
     });
   }
@@ -287,7 +295,9 @@ function valueEntries(node: unknown, prefix: string): YamlStructureNode[] {
         `${prefix}-${index}`,
         displayValue(item) ?? `item ${index + 1}`,
         item,
-        offsetOf(item)
+        offsetOf(item),
+        [],
+        'foreground'
       )
     );
   }
@@ -347,7 +357,8 @@ function buildDocumentSections(
       `${sectionName} >`,
       pair.value,
       pairOffset(pair),
-      entries
+      entries,
+      sectionName === 'parameters' ? 'foreground' : undefined
     ));
   }
   return nodes;

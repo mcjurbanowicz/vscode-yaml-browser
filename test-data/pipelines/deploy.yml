@@ -38,14 +38,17 @@ stages:
 
   - stage: PreDeployValidation
     displayName: 'Pre-Deploy Validation'
+    condition: succeeded()
     jobs:
       - job: Validate
         displayName: 'Validation Job'
+        condition: succeeded()
         steps:
           - pwsh: |
               Write-Output "Validating deployment configuration for $(DeployEnvironment)..."
               Write-Output "Configuration validation: PASSED"
             displayName: 'Validate Config'
+            condition: and(succeeded(), ne(variables['DeployEnvironment'], ''))
           - pwsh: |
               Write-Output "Build ID: $(BuildId)"
               Write-Output "Build ID validation: PASSED"

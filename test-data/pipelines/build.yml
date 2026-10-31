@@ -55,15 +55,18 @@ stages:
 
   - stage: FinalizeBuild
     displayName: 'Finalize Build'
+    condition: succeeded()
     jobs:
       - job: Package
         displayName: 'Package Job'
+        condition: succeeded()
         steps:
           - pwsh: |
               Write-Output "Packaging build artifacts..."
               Write-Output "Compression: zip"
               Write-Output "Output: build/artifacts/output.zip"
             displayName: 'Package'
+            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
           - pwsh: |
               Write-Output "Build ID: $(BuildId)"
               Write-Output "Pipeline: $(PipelineName)"

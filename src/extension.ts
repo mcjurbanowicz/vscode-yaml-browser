@@ -116,6 +116,12 @@ export class ADOYAMLInspectorExtension {
     );
 
     this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.validateYaml', () => {
+        this.validateActiveYaml();
+      })
+    );
+
+    this.disposables.push(
       vscode.commands.registerCommand('adoInspector.selectBreadcrumb', async () => {
         await this.referenceNavigator.showBreadcrumbPicker();
       })
@@ -390,6 +396,31 @@ export class ADOYAMLInspectorExtension {
       ...diagnostics,
       ...(this.scanDiagnostics.get(document.uri.fsPath) ?? []),
     ]);
+  }
+
+  private validateActiveYaml(): void {
+    const document = vscode.window.activeTextEditor?.document;
+    if (!document || document.languageId !== 'yaml') {
+      void vscode.window.showErrorMessage('Open a YAML file to validate it.');
+      return;
+    }
+
+    this.validateDocument(document);
+    const diagnostics = this.diagnostics.get(document.uri) ?? [];
+    if (diagnostics.length === 0) {
+      void vscode.window.showInformationMessage('No YAML issues found.');
+      return;
+    }
+
+    const errors = diagnostics.filter(
+      (diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Error
+    ).length;
+    const warnings = diagnostics.filter(
+      (diagnostic) => diagnostic.severity === vscode.DiagnosticSeverity.Warning
+    ).length;
+    void vscode.window.showWarningMessage(
+      `Validation found ${diagnostics.length} issue(s): ${errors} error(s), ${warnings} warning(s).`
+    );
   }
 
   private publishTemplateDiagnostics(): void {

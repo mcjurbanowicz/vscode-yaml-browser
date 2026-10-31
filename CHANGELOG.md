@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.8
+- Set parameter icons to the theme’s default foreground color.
+- Moved YAML Structure into a dedicated YAML Inspector panel and added a Validate YAML action.
+- Added stage, job, and step condition examples to pipeline fixtures.
+- Removed the duplicate “Find Template References” editor-title button.
+
 ## 0.0.7
 - Display template reference paths relative to their highest shared directory.
 - Color stage, job, and step icons by type, distinguishing templates from concrete entries.
