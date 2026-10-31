@@ -1,0 +1,85 @@
+# Main Build Pipeline
+# Uses nested templates: deploy-template.yml -> build-template.yml -> common.yml
+# This demonstrates a 3-level template hierarchy
+
+parameters:
+  - name: image
+    type: string
+    default: 'ubuntu-latest'
+    displayName: 'Build Image'
+    values:
+      - 'ubuntu-latest'
+      - 'windows-latest'
+      - 'macos-latest'
+  - name: shell
+    type: string
+    default: 'pwsh'
+    displayName: 'Shell Type'
+    values:
+      - 'bash'
+      - 'pwsh'
+  - name: includeTests
+    type: boolean
+    default: true
+    displayName: 'Include Tests'
+
+---
+# Main Build Pipeline - Uses Level 2 template which cascades to Level 1 -> Level 0
+# Template chain: deploy-template.yml (L2) -> build-template.yml (L1) -> common.yml (L0)
+
+variables:
+  - name: BuildId
+    value: '$(Build.BuildId)'
+  - name: PipelineName
+    value: 'Build Pipeline'
+  - name: Environment
+    value: 'staging'
+
+stages:
+  # Stage 1: Cascading template call (Level 2 -> Level 1 -> Level 0)
+  # This template calls build-template.yml which in turn calls common.yml
+  - template: ./common-pipeline-templates/deploy-template.yml
+    parameters:
+      environment: '$(Environment)'
+      buildImage: ${{ parameters.image }}
+
+  # Stage 2: Direct template call for build-specific tasks
+  - template: ./common-pipeline-templates/build-template.yml
+    parameters:
+      image: ${{ parameters.image }}
+      shell: ${{ parameters.shell }}
+      buildSteps:
+        - pwsh: |
+            Write-Output "Running unit tests"
+            Write-Output "Test framework: xUnit"
+          displayName: 'Unit Tests'
+        - pwsh: |
+            Write-Output "Running integration tests"
+            Write-Output "Test framework: NUnit"
+          displayName: 'Integration Tests'
+        - ${{ if eq(parameters.includeTests, false) }}:
+            - pwsh: |
+                Write-Output "Skipping tests"
+                Write-Output "includeTests parameter is false"
+              displayName: 'Skip Tests'
+
+  # Stage 3: Direct job for additional build tasks
+  - stage: FinalizeBuild
+    displayName: 'Finalize Build'
+    jobs:
+      - job: Package
+        displayName: 'Package Job'
+        steps:
+          - pwsh: |
+              Write-Output "Packaging build artifacts..."
+              Write-Output "Compression: zip"
+              Write-Output "Output: build/artifacts/output.zip"
+            displayName: 'Package'
+          - pwsh: |
+              Write-Output "Build ID: $(BuildId)"
+              Write-Output "Pipeline: $(PipelineName)"
+            displayName: 'Log Build ID'
+          - pwsh: |
+              Write-Output "Pipeline: $(PipelineName)"
+              Write-Output "Current Date: $(CurrentDate)"
+            displayName: 'Log Pipeline'

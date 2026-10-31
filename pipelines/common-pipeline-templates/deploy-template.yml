@@ -1,0 +1,69 @@
+# Level 2: Deploy Template
+# Composes Level 1 build-template with deployment-specific logic
+# This is the highest-level template in the hierarchy
+# It cascades down to Level 1 -> Level 0
+
+parameters:
+  - name: environment
+    type: string
+    default: 'staging'
+    description: 'Target deployment environment (staging, production, etc.)'
+  - name: buildImage
+    type: string
+    default: 'ubuntu-latest'
+    description: 'Build image reference'
+
+---
+# Level 2: Conditional deployment routing
+# Routes build logic based on target environment
+
+stages:
+  # Route to staging deployment
+  - ${{ if eq(parameters.environment, 'staging') }}:
+      - template: build-template.yml
+        parameters:
+          image: $(buildImage)
+          shell: 'pwsh'
+          buildSteps:
+            - pwsh: |
+                Write-Output "Preparing staging deployment..."
+                Write-Output "Environment: $(parameters.environment)"
+              displayName: 'Prepare Staging'
+            - pwsh: |
+                Write-Output "Deploying to staging server..."
+                Write-Output "Target: staging"
+              displayName: 'Deploy to Staging'
+
+  # Route to production deployment
+  - ${{ if eq(parameters.environment, 'production') }}:
+      - template: build-template.yml
+        parameters:
+          image: 'windows-latest'
+          shell: 'pwsh'
+          buildSteps:
+            - pwsh: |
+                Write-Output "Preparing production deployment..."
+                Write-Output "Environment: $(parameters.environment)"
+              displayName: 'Prepare Production'
+            - pwsh: |
+                Write-Output "Deploying to production server..."
+                Write-Output "Target: production"
+              displayName: 'Deploy to Production'
+
+  # Default deployment stage
+  - stage: Deploy
+    displayName: 'Deploy Stage'
+    jobs:
+      - job: DeployJob
+        displayName: 'Deploy Job'
+        steps:
+          - pwsh: |
+              Write-Output "Environment: $(parameters.environment)"
+              Write-Output "Deploying application..."
+              Write-Output "Health check passed"
+            displayName: 'Deploy Application'
+
+          - pwsh: |
+              Write-Output "Deployment completed to $(parameters.environment)"
+              Write-Output "Deployment status: SUCCESS"
+            displayName: 'Deployment Complete'

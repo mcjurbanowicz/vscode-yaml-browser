@@ -1,0 +1,73 @@
+# Level 1: Build Template
+# Composes Level 0 common utilities with build-specific logic
+# This template is used by deploy-template.yml (Level 2) and directly by main pipelines
+
+parameters:
+  - name: image
+    type: string
+    default: 'ubuntu-latest'
+    description: 'The VM image to use'
+  - name: shell
+    type: string
+    default: 'pwsh'
+    description: 'Shell interpreter (bash or pwsh)'
+  - name: buildSteps
+    type: object
+    default:
+      - pwsh: |
+          Write-Output "Build step 1"
+          Write-Output "Build process initiated"
+        displayName: 'Build Step 1'
+      - pwsh: |
+          Write-Output "Build step 2"
+          Write-Output "Build process continuing"
+        displayName: 'Build Step 2'
+
+---
+# Level 1: Conditional build configuration based on image
+# Routes to different build configurations based on the image parameter
+
+stages:
+  # Route to Ubuntu build path
+  - ${{ if eq(parameters.image, 'ubuntu-latest') }}:
+      - template: common.yml
+        parameters:
+          shell: 'pwsh'
+          displayName: 'Ubuntu Build'
+          steps:
+            - pwsh: |
+                Write-Output "Setting up build environment on Ubuntu"
+                Write-Output "Environment: ubuntu-latest"
+              displayName: 'Ubuntu Setup'
+            - ${{ parameters.buildSteps }}
+
+  # Route to Windows build path
+  - ${{ if eq(parameters.image, 'windows-latest') }}:
+      - template: common.yml
+        parameters:
+          shell: 'pwsh'
+          displayName: 'Windows Build'
+          steps:
+            - pwsh: |
+                Write-Output "Setting up build environment on Windows"
+                Write-Output "Environment: windows-latest"
+              displayName: 'Windows Setup'
+            - ${{ parameters.buildSteps }}
+
+  # Default stage for build execution
+  - stage: Build
+    displayName: 'Build Stage'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build Job'
+        steps:
+          - pwsh: |
+              Write-Output "Compiling application..."
+              Write-Output "Running tests..."
+              Write-Output "Build artifact: build/output/app.jar"
+            displayName: 'Compile & Test'
+
+          - pwsh: |
+              Write-Output "Build completed successfully"
+              Write-Output "Build ID: $(Build.BuildId)"
+            displayName: 'Build Complete'

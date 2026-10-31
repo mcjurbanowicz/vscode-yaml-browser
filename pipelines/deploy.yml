@@ -1,0 +1,133 @@
+# Main Deploy Pipeline
+# Uses nested templates: deploy-template.yml -> build-template.yml -> common.yml
+# This demonstrates deployment-specific pipeline with 3-level template nesting
+
+parameters:
+  - name: environment
+    type: string
+    default: 'staging'
+    displayName: 'Target Environment'
+    values:
+      - 'staging'
+      - 'production'
+      - 'development'
+  - name: buildId
+    type: string
+    default: '$(Build.BuildId)'
+    displayName: 'Build ID'
+  - name: deployType
+    type: string
+    default: 'rolling'
+    displayName: 'Deployment Type'
+    values:
+      - 'rolling'
+      - 'all-at-once'
+      - 'blue-green'
+
+---
+# Main Deploy Pipeline - Uses nested templates with cascading inheritance
+# Template chain: deploy-template.yml (L2) -> build-template.yml (L1) -> common.yml (L0)
+
+variables:
+  - name: DeployEnvironment
+    value: ${{ parameters.environment }}
+  - name: BuildId
+    value: ${{ parameters.buildId }}
+  - name: PipelineName
+    value: 'Deploy Pipeline'
+  - name: DeployType
+    value: ${{ parameters.deployType }}
+
+stages:
+  # Stage 1: Cascading template call (Level 2 -> Level 1 -> Level 0)
+  # deploy-template.yml includes build-template.yml which includes common.yml
+  - template: ./common-pipeline-templates/deploy-template.yml
+    parameters:
+      environment: ${{ parameters.environment }}
+      buildImage: 'ubuntu-latest'
+
+  # Stage 2: Pre-deployment validation
+  - stage: PreDeployValidation
+    displayName: 'Pre-Deploy Validation'
+    jobs:
+      - job: Validate
+        displayName: 'Validation Job'
+        steps:
+          - pwsh: |
+              Write-Output "Validating deployment configuration for $(DeployEnvironment)..."
+              Write-Output "Configuration validation: PASSED"
+            displayName: 'Validate Config'
+          - pwsh: |
+              Write-Output "Build ID: $(BuildId)"
+              Write-Output "Build ID validation: PASSED"
+            displayName: 'Show Build ID'
+          - pwsh: |
+              Write-Output "Deployment type: $(DeployType)"
+              Write-Output "Deploy type: $(DeployType)"
+            displayName: 'Show Deploy Type'
+          - pwsh: |
+              Write-Output "Pipeline: $(PipelineName)"
+              Write-Output "Pipeline: $(PipelineName)"
+            displayName: 'Show Pipeline Name'
+
+  # Stage 3: Direct deployment logic with conditional routing
+  - stage: Deploy
+    displayName: 'Deploy to $(DeployEnvironment)'
+    jobs:
+      - job: DeployJob
+        displayName: 'Deploy Job'
+        steps:
+          # Conditional deployment strategy based on deployType
+          - ${{ if eq(parameters.deployType, 'rolling') }}:
+              - pwsh: |
+                  Write-Output "=== Rolling Deployment ==="
+                  Write-Output "Deploying to: $(DeployEnvironment)"
+                  Write-Output "Build ID: $(BuildId)"
+                  Write-Output "Step 1: Deploy to region-1"
+                  Write-Output "Step 2: Wait for health check"
+                  Write-Output "Step 3: Deploy to region-2"
+                  Write-Output "Step 4: Verify all regions healthy"
+                displayName: 'Rolling Deploy'
+
+          - ${{ if eq(parameters.deployType, 'blue-green') }}:
+              - pwsh: |
+                  Write-Output "=== Blue-Green Deployment ==="
+                  Write-Output "Deploying to: $(DeployEnvironment)"
+                  Write-Output "Build ID: $(BuildId)"
+                  Write-Output "Step 1: Deploy to secondary environment"
+                  Write-Output "Step 2: Run smoke tests"
+                  Write-Output "Step 3: Switch traffic"
+                  Write-Output "Step 4: Verify production traffic"
+                displayName: 'Blue-Green Deploy'
+
+          - ${{ if eq(parameters.deployType, 'all-at-once') }}:
+              - pwsh: |
+                  Write-Output "=== All-At-Once Deployment ==="
+                  Write-Output "Deploying to: $(DeployEnvironment)"
+                  Write-Output "Build ID: $(BuildId)"
+                  Write-Output "Step 1: Deploy all instances simultaneously"
+                  Write-Output "Step 2: Run health checks"
+                  Write-Output "Step 3: Verify all instances healthy"
+                displayName: 'All-At-Once Deploy'
+
+          - pwsh: |
+              Write-Output "Deployment to $(DeployEnvironment) completed successfully"
+              Write-Output "Deployment status: SUCCESS"
+            displayName: 'Deploy Complete'
+
+  # Stage 4: Post-deployment verification
+  - stage: PostDeployVerification
+    displayName: 'Post-Deploy Verification'
+    jobs:
+      - job: Verify
+        displayName: 'Verification Job'
+        steps:
+          - pwsh: |
+              Write-Output "Verifying deployment health for $(DeployEnvironment)..."
+              Write-Output "Health check endpoint: /health"
+              Write-Output "Response: 200 OK"
+            displayName: 'Health Check'
+          - pwsh: |
+              Write-Output "All verification checks passed"
+              Write-Output "Verification status: PASSED"
+            displayName: 'Verification Passed'

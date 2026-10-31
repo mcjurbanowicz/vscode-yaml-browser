@@ -1,0 +1,66 @@
+# Level 0: Base Common Utilities Template
+# Provides reusable step definitions that higher-level templates can compose
+# This is the foundation layer of the template hierarchy
+
+parameters:
+  - name: image
+    type: string
+    default: 'ubuntu-latest'
+    description: 'The VM image to use for the job'
+  - name: shell
+    type: string
+    default: 'bash'
+    description: 'The shell interpreter to use (bash or pwsh)'
+  - name: displayName
+    type: string
+    default: 'Common Task'
+    description: 'Display name for the stage/job'
+  - name: steps
+    type: object
+    default:
+      - pwsh: |
+          Write-Output "Base task executed"
+        displayName: 'Base Script'
+
+---
+# Level 0: Base Setup Stage
+# Provides foundational setup steps that all templates inherit from
+
+stages:
+  - stage: BaseSetup
+    displayName: 'Base Setup Stage'
+    jobs:
+      - job: BaseJob
+        displayName: 'Base Job'
+        steps:
+          # Conditional shell setup based on parameter
+          - ${{ if eq(parameters.shell, 'bash') }}:
+              - pwsh: |
+                  Write-Output "Using bash shell"
+                  Write-Output "Shell: bash"
+                displayName: 'Shell Setup'
+          - ${{ if eq(parameters.shell, 'pwsh') }}:
+              - pwsh: |
+                  Write-Output "Using PowerShell"
+                  Write-Output "PowerShell version: $($PSVersionTable.PSVersion)"
+                displayName: 'Shell Setup'
+
+          # Include shared variables template
+          - template: ../vars.yml
+            parameter:
+              variableName: 'baseVar'
+              value: 'value-from-common'
+
+          # Execute parameterized steps from parent templates
+          - ${{ parameters.steps }}
+
+  - stage: BaseCleanup
+    displayName: 'Base Cleanup Stage'
+    jobs:
+      - job: CleanupJob
+        displayName: 'Cleanup Job'
+        steps:
+          - pwsh: |
+              Write-Output "Cleanup completed"
+              Write-Output "Base cleanup finished successfully"
+            displayName: 'Cleanup'
