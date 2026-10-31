@@ -46,11 +46,14 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
     }
 
     const filePath = document.uri.fsPath;
-    const referenceItems = this.createReferenceItems(filePath, references);
-    const referenceGroup = this.createGroup('Template references >', referenceItems, filePath, 0);
+    const { referencesTo, referencedBy } = this.createReferenceItems(filePath, references);
+    const referenceGroups = [
+      this.createGroup('Referenced by >', referencedBy, filePath, 0),
+      this.createGroup('References >', referencesTo, filePath, 0),
+    ];
     const sections = buildYamlStructure(document.getText(), options)
       .map((node) => this.createStructureItem(node, filePath));
-    this.rootItems = [referenceGroup, ...sections];
+    this.rootItems = [...referenceGroups, ...sections];
     this.changeEmitter.fire();
   }
 
@@ -61,9 +64,10 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
   private createReferenceItems(
     activePath: string,
     references: TemplateReference[]
-  ): YamlStructureItem[] {
+  ): { referencesTo: YamlStructureItem[]; referencedBy: YamlStructureItem[] } {
     const normalizedActivePath = this.normalizePath(activePath);
-    const items: YamlStructureItem[] = [];
+    const referencesTo: YamlStructureItem[] = [];
+    const referencedBy: YamlStructureItem[] = [];
     const seen = new Set<string>();
 
     for (const reference of references) {
@@ -83,8 +87,7 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
       }
       seen.add(id);
 
-      const direction = sourceIsActive ? 'References' : 'Referenced by';
-      const label = `${direction} > ${path.basename(targetPath)}`;
+      const label = path.basename(targetPath);
       const item = new YamlStructureItem(
         label,
         vscode.TreeItemCollapsibleState.None,
@@ -96,13 +99,13 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
       item.iconPath = new vscode.ThemeIcon('file');
       item.command = {
         command: 'adoInspector.navigateToYamlElement',
-        title: 'Open referenced YAML file',
+        title: 'Open related YAML file',
         arguments: [item],
       };
-      items.push(item);
+      (sourceIsActive ? referencesTo : referencedBy).push(item);
     }
 
-    return items;
+    return { referencesTo, referencedBy };
   }
 
   private createGroup(
@@ -137,7 +140,9 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
     );
     item.children = children;
     item.id = node.id;
-    item.iconPath = new vscode.ThemeIcon(children.length ? 'symbol-structure' : 'symbol-field');
+    item.iconPath = new vscode.ThemeIcon(
+      node.icon ?? (children.length ? 'symbol-structure' : 'symbol-field')
+    );
     item.command = {
       command: 'adoInspector.navigateToYamlElement',
       title: 'Go to YAML element',

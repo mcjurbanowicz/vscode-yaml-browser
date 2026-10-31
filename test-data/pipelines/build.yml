@@ -20,8 +20,6 @@ parameters:
     default: true
     displayName: 'Include Tests'
 
----
-
 variables:
   - name: BuildId
     value: '$(Build.BuildId)'

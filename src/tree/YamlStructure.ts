@@ -12,6 +12,7 @@ export interface YamlStructureNode {
   label: string;
   offset: number;
   children: YamlStructureNode[];
+  icon?: string;
 }
 
 const sectionNames = [
@@ -43,6 +44,34 @@ function mapValue(node: unknown, key: string): unknown {
 
 function mapPair(node: unknown, key: string): Pair | undefined {
   return mapEntries(node).find((pair) => scalarValue(pair.key) === key);
+}
+
+function findTemplateReference(node: unknown): { node: unknown; pair: Pair } | undefined {
+  const templatePair = mapPair(node, 'template');
+  if (templatePair) {
+    return { node, pair: templatePair };
+  }
+
+  if (node instanceof YAMLSeq) {
+    for (const item of node.items) {
+      const reference = findTemplateReference(item);
+      if (reference) {
+        return reference;
+      }
+    }
+    return undefined;
+  }
+
+  for (const pair of mapEntries(node)) {
+    const key = displayValue(pair.key);
+    if (key?.startsWith('${{')) {
+      const reference = findTemplateReference(pair.value);
+      if (reference) {
+        return reference;
+      }
+    }
+  }
+  return undefined;
 }
 
 function offsetOf(node: unknown): number {
@@ -79,32 +108,34 @@ function namedEntry(
   idPrefix = ''
 ): YamlStructureNode {
   const id = idPrefix ? `${idPrefix}-${kind}-${index}` : `${kind}-${index}`;
-  const nameKeys = kind === 'stage'
-    ? ['stage', 'name']
+  const templateReference = findTemplateReference(node);
+  const entryNode = templateReference?.node ?? node;
+  const templatePath = templateReference
+    ? displayValue(templateReference.pair.value)
+    : undefined;
+  const templateName = templatePath?.split(/[\\/]/).pop();
+  const explicitName = displayValue(mapValue(entryNode, 'name'));
+  const displayName = displayValue(mapValue(entryNode, 'displayName'));
+  const stageOrJobName = kind === 'stage'
+    ? displayValue(mapValue(entryNode, 'stage'))
     : kind === 'job'
-      ? ['job', 'deployment', 'name']
-      : [];
-  const namePair = nameKeys.length
-    ? nameKeys.map((key) => mapPair(node, key)).find((pair) => pair !== undefined)
-    : mapEntries(node).find((pair) => ![
-      'displayName',
-      'condition',
-      'parameters',
-      'inputs',
-      'env',
-      'continueOnError',
-      'enabled',
-      'timeoutInMinutes',
-      'retryCountOnTaskFailure',
-      'target',
-    ].includes(String(scalarValue(pair.key))));
-  const name = displayValue(namePair?.value) ?? `${kind} ${index + 1}`;
-  const displayName = displayValue(mapValue(node, 'displayName'));
-  const label = displayName ? `${name} / ${displayName}` : name;
+      ? displayValue(mapValue(entryNode, 'job')) ?? displayValue(mapValue(entryNode, 'deployment'))
+      : undefined;
+  const taskType = kind === 'step' ? displayValue(mapValue(entryNode, 'task')) : undefined;
+  const stepType = kind === 'step'
+    ? ['script', 'bash', 'pwsh', 'powershell', 'checkout', 'publish', 'download', 'template']
+      .find((key) => mapPair(entryNode, key) !== undefined)
+    : undefined;
+  const label = templateName
+    ?? explicitName
+    ?? displayName
+    ?? stageOrJobName
+    ?? (taskType ? `# ${taskType}` : stepType)
+    ?? `${kind} ${index + 1}`;
   const children: YamlStructureNode[] = [];
 
   if (options.showConditions) {
-    const conditionPair = mapPair(node, 'condition');
+    const conditionPair = mapPair(entryNode, 'condition');
     const condition = displayValue(conditionPair?.value);
     if (condition && conditionPair) {
       children.push(sectionNode(
@@ -122,7 +153,7 @@ function namedEntry(
       ? options.showJobParameters
       : options.showStepParameters;
   if (showParameters) {
-    const parametersPair = mapPair(node, 'parameters');
+    const parametersPair = mapPair(entryNode, 'parameters');
     if (parametersPair) {
       children.push(sectionNode(
         `${id}-parameters`,
@@ -136,28 +167,52 @@ function namedEntry(
 
   if (kind === 'stage' || kind === 'job') {
     const jobsOrSteps = kind === 'stage' ? 'jobs' : 'steps';
-    const childrenPair = mapPair(node, jobsOrSteps);
+    const childrenPair = mapPair(entryNode, jobsOrSteps);
     if (childrenPair) {
       const entries = kind === 'stage'
-        ? buildEntries(childrenPair.value, 'job', options, `${id}-${jobsOrSteps}`)
+        ? buildEntries(childrenPair.value, 'job', options, id)
         : buildEntries(childrenPair.value, 'step', options, `${id}-${jobsOrSteps}`);
-      children.push(sectionNode(
-        `${id}-${jobsOrSteps}`,
-        `${jobsOrSteps} >`,
-        childrenPair.value,
-        pairOffset(childrenPair),
-        entries
-      ));
+      if (kind === 'stage') {
+        children.push(...entries);
+      } else {
+        children.push(sectionNode(
+          `${id}-${jobsOrSteps}`,
+          `${jobsOrSteps} >`,
+          childrenPair.value,
+          pairOffset(childrenPair),
+          entries
+        ));
+      }
     }
   }
 
-  return sectionNode(
+  const entry = sectionNode(
     id,
     label,
-    node,
-    offsetOf(node),
+    entryNode,
+    templateReference ? pairOffset(templateReference.pair) : offsetOf(node),
     children
   );
+  if (templateName) {
+    entry.icon = 'file-symlink-file';
+  }
+  return entry;
+}
+
+function addDuplicateIndexes(nodes: YamlStructureNode[]): YamlStructureNode[] {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    counts.set(node.label, (counts.get(node.label) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  return nodes.map((node) => {
+    if ((counts.get(node.label) ?? 0) < 2) {
+      return node;
+    }
+    const index = (seen.get(node.label) ?? 0) + 1;
+    seen.set(node.label, index);
+    return { ...node, label: `${node.label} #${index}` };
+  });
 }
 
 function buildEntries(
@@ -167,23 +222,26 @@ function buildEntries(
   idPrefix = ''
 ): YamlStructureNode[] {
   if (node instanceof YAMLSeq) {
-    return node.items.map((item, index) => {
+    const entries = node.items.map((item, index) => {
       if (kind === 'stage' || kind === 'job' || kind === 'step') {
         return namedEntry(item, index, kind, options, idPrefix);
       }
 
       const name = displayValue(mapValue(item, 'name'))
+        ?? displayValue(mapValue(item, 'displayName'))
         ?? displayValue(mapValue(item, 'cron'))
         ?? `${kind} ${index + 1}`;
-      const displayName = displayValue(mapValue(item, 'displayName'));
       return sectionNode(
         idPrefix ? `${idPrefix}-${kind}-${index}` : `${kind}-${index}`,
-        displayName ? `${name} / ${displayName}` : name,
+        name,
         item,
         offsetOf(item),
         []
       );
     });
+    return kind === 'stage' || kind === 'job' || kind === 'step'
+      ? addDuplicateIndexes(entries)
+      : entries;
   }
 
   if (node instanceof YAMLMap) {
@@ -243,17 +301,12 @@ export function buildYamlStructure(
   if (validDocuments.length === 0) {
     return [];
   }
-  if (validDocuments.length === 1) {
-    return buildDocumentSections(validDocuments[0].contents, options);
-  }
-
-  return validDocuments.map(({ index, contents }) => ({
-    id: `document-${index}`,
-    label: `Document ${index + 1} >`,
-    offset: offsetOf(contents),
-    children: buildDocumentSections(contents, options)
-      .map((node) => prefixNodeIds(node, `document-${index}`)),
-  }));
+  return validDocuments.flatMap(({ index, contents }) => {
+    const sections = buildDocumentSections(contents, options);
+    return validDocuments.length === 1
+      ? sections
+      : sections.map((node) => prefixNodeIds(node, `document-${index}`));
+  });
 }
 
 function buildDocumentSections(

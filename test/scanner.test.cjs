@@ -166,7 +166,7 @@ test('builds a clickable YAML overview with optional conditions and parameters',
     '        parameters:',
     '          retries: 2',
     '        steps:',
-    '          - script: npm test',
+    '          - task: DownloadPipelineArtifact@2',
     "            displayName: 'Run tests'",
     '            condition: succeeded()',
     '            parameters:',
@@ -195,16 +195,17 @@ test('builds a clickable YAML overview with optional conditions and parameters',
     'trigger >',
     'stages >',
   ]);
-  assert.equal(findNode(nodes, 'parameter-0').label, 'region / Target region');
-  assert.equal(findNode(nodes, 'stage-0').label, 'Build / Build stage');
+  assert.equal(findNode(nodes, 'parameter-0').label, 'region');
+  assert.equal(findNode(nodes, 'stage-0').label, 'Build stage');
   assert.ok(findNode(nodes, 'stage-0-condition'));
   assert.ok(findNode(nodes, 'stage-0-parameters'));
-  assert.equal(findNode(nodes, 'stage-0-jobs-job-0').label, 'Compile / Compile job');
-  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-condition'));
-  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-parameters'));
-  assert.equal(findNode(nodes, 'stage-0-jobs-job-0-steps-step-0').label, 'npm test / Run tests');
-  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-steps-step-0-condition'));
-  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-steps-step-0-parameters'));
+  assert.equal(findNode(nodes, 'stage-0-job-0').label, 'Compile job');
+  assert.ok(findNode(nodes, 'stage-0-job-0-condition'));
+  assert.ok(findNode(nodes, 'stage-0-job-0-parameters'));
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-0').label, 'Run tests');
+  assert.ok(findNode(nodes, 'stage-0-job-0-steps-step-0-condition'));
+  assert.ok(findNode(nodes, 'stage-0-job-0-steps-step-0-parameters'));
+  assert.ok(nodes.every((node) => node.label !== 'jobs >'));
   assert.equal(content.slice(findNode(nodes, 'stage-0').offset).startsWith('stage: Build'), true);
 
   const hiddenDetails = buildYamlStructure(content, {
@@ -215,11 +216,55 @@ test('builds a clickable YAML overview with optional conditions and parameters',
   });
   assert.equal(findNode(hiddenDetails, 'stage-0-condition'), undefined);
   assert.equal(findNode(hiddenDetails, 'stage-0-parameters'), undefined);
-  assert.equal(findNode(hiddenDetails, 'stage-0-jobs-job-0-condition'), undefined);
-  assert.equal(findNode(hiddenDetails, 'stage-0-jobs-job-0-steps-step-0-parameters'), undefined);
+  assert.equal(findNode(hiddenDetails, 'stage-0-job-0-condition'), undefined);
+  assert.equal(findNode(hiddenDetails, 'stage-0-job-0-steps-step-0-parameters'), undefined);
 });
 
-test('includes structure from every YAML document in a multi-document file', () => {
+test('prefers explicit names and numbers duplicate step labels and task types', () => {
+  const content = [
+    'stages:',
+    '  - stage: InternalStage',
+    '    displayName: Stage display',
+    '    jobs:',
+    '      - job: InternalJob',
+    '        displayName: Job display',
+    '        steps:',
+    '          - name: FirstNamedStep',
+    '            displayName: Step display',
+    '            pwsh: Write-Output first',
+    '          - name: FirstNamedStep',
+    '            pwsh: Write-Output second',
+    '          - task: DownloadPipelineArtifact@2',
+    '          - task: DownloadPipelineArtifact@2',
+    '          - pwsh: Write-Output third',
+    '          - pwsh: Write-Output fourth',
+  ].join('\n');
+  const nodes = buildYamlStructure(content, {
+    showConditions: false,
+    showStageParameters: false,
+    showJobParameters: false,
+    showStepParameters: false,
+  });
+  const findNode = (items, id) => {
+    for (const item of items) {
+      if (item.id === id) return item;
+      const found = findNode(item.children, id);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  assert.equal(findNode(nodes, 'stage-0').label, 'Stage display');
+  assert.equal(findNode(nodes, 'stage-0-job-0').label, 'Job display');
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-0').label, 'FirstNamedStep #1');
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-1').label, 'FirstNamedStep #2');
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-2').label, '# DownloadPipelineArtifact@2 #1');
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-3').label, '# DownloadPipelineArtifact@2 #2');
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-4').label, 'pwsh #1');
+  assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-5').label, 'pwsh #2');
+});
+
+test('includes structure from every YAML document without displaying document separators', () => {
   const content = 'parameters:\n  - name: first\n---\nstages:\n  - stage: Second\n';
   const nodes = buildYamlStructure(content, {
     showConditions: false,
@@ -228,8 +273,40 @@ test('includes structure from every YAML document in a multi-document file', () 
     showStepParameters: false,
   });
 
-  assert.deepEqual(nodes.map((node) => node.label), ['Document 1 >', 'Document 2 >']);
-  assert.equal(nodes[0].children[0].label, 'parameters >');
-  assert.equal(nodes[1].children[0].label, 'stages >');
-  assert.equal(nodes[1].children[0].children[0].label, 'Second');
+  assert.deepEqual(nodes.map((node) => node.label), ['parameters >', 'stages >']);
+  assert.equal(nodes[0].children[0].label, 'first');
+  assert.equal(nodes[1].children[0].label, 'Second');
+  assert.notEqual(nodes[0].id, nodes[1].id);
+});
+
+test('labels stage, job, and step template references by filename with a distinct icon', () => {
+  const content = [
+    'stages:',
+    '  - template: stages/deploy-stage.yml',
+    "  - ${{ if eq(parameters.environment, 'production') }}:",
+    '      - template: stages/conditional-stage.yml',
+    'jobs:',
+    '  - template: jobs/deploy-job.yml',
+    'steps:',
+    '  - template: steps/deploy-steps.yml',
+  ].join('\n');
+  const nodes = buildYamlStructure(content, {
+    showConditions: false,
+    showStageParameters: false,
+    showJobParameters: false,
+    showStepParameters: false,
+  });
+  const templateNodes = nodes.flatMap((section) => section.children);
+
+  assert.deepEqual(templateNodes.map(({ label }) => label), [
+    'deploy-stage.yml',
+    'conditional-stage.yml',
+    'deploy-job.yml',
+    'deploy-steps.yml',
+  ]);
+  assert.ok(templateNodes.every(({ icon }) => icon === 'file-symlink-file'));
+  assert.equal(
+    templateNodes[1].offset,
+    content.indexOf('template: stages/conditional-stage.yml')
+  );
 });
