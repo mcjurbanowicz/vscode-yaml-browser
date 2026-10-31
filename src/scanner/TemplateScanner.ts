@@ -269,52 +269,61 @@ export class TemplateScanner {
     );
     const currentAncestors = new Set(ancestors).add(fullPath);
 
-    if (currentDepth < config.maxDepth) {
-      for (const reference of [...templateReferences]) {
-        if (reference.parameterSyntaxError) {
-          errors.push({
-            file: reference.sourceFile,
-            line: reference.line,
-            column: reference.column,
-            message: reference.parameterSyntaxError,
-            type: 'error',
-          });
-        }
-        if (currentAncestors.has(reference.path)) {
-          errors.push({
-            file: fullPath,
-            line: reference.line,
-            column: reference.column,
-            message: `Circular template reference: ${reference.path}`,
-            type: 'error',
-          });
-          continue;
-        }
-
-        const childResult = await this.scanFile(
-          reference.path,
-          config,
-          currentDepth + 1,
-          currentAncestors
-        );
-        errors.push(
-          ...this.validateTemplateParameters(reference, childResult.tree.parameters)
-        );
-        childResult.tree.depth = currentDepth + 1;
-        childResult.tree.isRoot = false;
-        childResult.tree.parameters = reference.parameters;
-        childResult.tree.referencedLine = reference.line;
-        tree.children.push(childResult.tree);
-        templateReferences.push(...childResult.references);
-        errors.push(...childResult.errors);
+    for (const reference of [...templateReferences]) {
+      if (reference.parameterSyntaxError) {
+        errors.push({
+          file: reference.sourceFile,
+          line: reference.line,
+          column: reference.column,
+          message: reference.parameterSyntaxError,
+          type: 'error',
+        });
       }
+      if (currentDepth >= config.maxDepth) {
+        continue;
+      }
+      if (currentAncestors.has(reference.path)) {
+        errors.push({
+          file: fullPath,
+          line: reference.line,
+          column: reference.column,
+          message: `Circular template reference: ${reference.path}`,
+          type: 'error',
+        });
+        continue;
+      }
+
+      const childResult = await this.scanFile(
+        reference.path,
+        config,
+        currentDepth + 1,
+        currentAncestors
+      );
+      errors.push(
+        ...this.validateTemplateParameters(reference, childResult.tree.parameters)
+      );
+      childResult.tree.depth = currentDepth + 1;
+      childResult.tree.isRoot = false;
+      childResult.tree.parameters = reference.parameters;
+      childResult.tree.referencedLine = reference.line;
+      tree.children.push(childResult.tree);
+      templateReferences.push(...childResult.references);
+      errors.push(...childResult.errors);
+    }
+
+    const uniqueErrors = new Map<string, TemplateScanError>();
+    for (const error of errors) {
+      uniqueErrors.set(
+        `${error.file}|${error.line}|${error.column}|${error.message}`,
+        error
+      );
     }
 
     return {
       root: fullPath,
       tree,
       references: templateReferences,
-      errors,
+      errors: [...uniqueErrors.values()],
     };
   }
 

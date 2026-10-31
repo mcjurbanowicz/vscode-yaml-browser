@@ -1,0 +1,14 @@
+.vscode/**
+.git/**
+.gitignore
+docs/**
+pipelines/**
+test-data/**
+test/**
+src/**
+setup-wsl.sh
+WSL_SETUP.md
+package-lock.json
+tsconfig.json
+node_modules/**
+!node_modules/yaml/**

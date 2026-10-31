@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { TemplateTreeNode, TemplateExplorerProvider } from '../tree/TemplateExplorer';
 
 /**
@@ -14,8 +15,8 @@ export class ReferenceNavigator {
     this.treeProvider = treeProvider;
     this.panel = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.panel.command = {
-      command: 'adoInspector.navigateToTemplate',
-      title: 'Navigate to Template',
+      command: 'adoInspector.selectBreadcrumb',
+      title: 'Choose a template level',
     };
     this.panel.show();
   }
@@ -54,24 +55,22 @@ export class ReferenceNavigator {
     }
 
     // Build breadcrumb string
-    const breadcrumbs = this.currentPath.map((path) => {
-      const fileName = path.split('/').pop() || path;
-      return `📄 ${fileName}`;
-    });
+    const breadcrumbs = this.currentPath.map(
+      (filePath) => `$(file) ${path.basename(filePath)}`
+    );
 
     // Show full path if depth <= 3, otherwise collapse
     const displayLimit = 3;
     if (this.currentPath.length <= displayLimit) {
-      this.panel.text = `🍞 Breadcrumb: ${breadcrumbs.join(' → ')} 🍞`;
+      this.panel.text = breadcrumbs.join(' $(chevron-right) ');
     } else {
       // Collapse intermediate nodes
       const first = breadcrumbs[0];
       const last = breadcrumbs[breadcrumbs.length - 1];
-      const middle = breadcrumbs.length - 2 > 0 ? ' ... ' : '';
-      this.panel.text = `🍞 Breadcrumb: ${first} ${middle}${last} 🍞`;
+      this.panel.text = `${first} $(ellipsis) ${last}`;
     }
 
-    this.panel.tooltip = `Click to navigate. Full path: ${breadcrumbs.join(' → ')}`;
+    this.panel.tooltip = `Choose a template level: ${breadcrumbs.join(' > ')}`;
   }
 
   /**
@@ -86,8 +85,7 @@ export class ReferenceNavigator {
     }
 
     // Update navigation stack
-    this.navigationStack = this.navigationStack.filter((n) => n.key !== node.key);
-    this.pushNode(node);
+    this.setCurrentNode(node);
 
     // Open the template
     await this.treeProvider.openTemplate(node);
@@ -96,17 +94,61 @@ export class ReferenceNavigator {
     this.updateBreadcrumbDisplay();
   }
 
+  async showBreadcrumbPicker(): Promise<void> {
+    const selected = await vscode.window.showQuickPick(
+      this.navigationStack.map((node, index) => ({
+        label: `$(file) ${node.label}`,
+        description: node.path,
+        node,
+        index,
+      })),
+      { placeHolder: 'Navigate to a template level' }
+    );
+    if (!selected) {
+      return;
+    }
+
+    this.navigationStack = this.navigationStack.slice(0, selected.index + 1);
+    this.currentPath = this.navigationStack.map((node) => node.path);
+    await this.treeProvider.openTemplate(selected.node);
+    this.updateBreadcrumbDisplay();
+  }
+
+  setActivePath(filePath: string): void {
+    const node = this.findNodeByPath(filePath);
+    if (node) {
+      this.setCurrentNode(node);
+    } else {
+      this.clear();
+    }
+  }
+
+  dispose(): void {
+    this.panel.dispose();
+  }
+
+  private setCurrentNode(node: TemplateTreeNode): void {
+    const ancestry: TemplateTreeNode[] = [];
+    for (let current: TemplateTreeNode | null = node; current; current = current.parent) {
+      ancestry.push(current);
+    }
+    this.navigationStack = ancestry.reverse();
+    this.currentPath = this.navigationStack.map((entry) => entry.path);
+    this.updateBreadcrumbDisplay();
+  }
+
   /**
    * Navigate to the parent template.
    */
   async navigateToParent(): Promise<void> {
-    if (this.navigationStack.length === 0) {
+    if (this.navigationStack.length < 2) {
       vscode.window.showWarningMessage('No parent to navigate to.');
       return;
     }
 
-    const parent = this.navigationStack[this.navigationStack.length - 1];
     this.navigationStack.pop();
+    const parent = this.navigationStack[this.navigationStack.length - 1];
+    this.currentPath = this.navigationStack.map((node) => node.path);
 
     // Open the parent
     await this.treeProvider.openTemplate(parent);
@@ -119,9 +161,7 @@ export class ReferenceNavigator {
    * Navigate to a node in the tree.
    */
   async navigateToNode(node: TemplateTreeNode): Promise<void> {
-    // Remove any deeper nodes from the stack
-    this.navigationStack = this.navigationStack.filter((n) => n.key !== node.key);
-    this.pushNode(node);
+    this.setCurrentNode(node);
 
     // Open the template
     await this.treeProvider.openTemplate(node);

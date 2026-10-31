@@ -18,11 +18,12 @@
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "clean": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
+    "compile": "npm run clean && tsc -p ./",
     "test": "npm run compile && node --test",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "package": "vsce package",
+    "package": "vsce package --allow-missing-repository --skip-license",
     "publish": "vsce publish"
   },
   "contributes": {

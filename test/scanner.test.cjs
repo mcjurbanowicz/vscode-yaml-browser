@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { CachingRegistry } = require('../out/caching/CachingRegistry');
 const { TemplateScanner } = require('../out/scanner/TemplateScanner');
+const { YamlValidator } = require('../out/validation/YamlValidator');
 
 const pipelineRoot = path.resolve(__dirname, '..', 'test-data', 'pipelines');
 const config = {
@@ -22,7 +23,7 @@ test('scans nested template references and respects maxDepth', async (t) => {
   const scanner = new TemplateScanner(cache, pipelineRoot);
   const result = await scanner.scan('deploy.yml', config);
 
-  assert.deepEqual(result.errors, []);
+  assert.ok(result.errors.some((error) => error.message.includes('use "parameters:", not "parameter:"')));
   assert.equal(result.tree.tree.children.length, 1);
   assert.match(result.tree.tree.children[0].path, /deploy-template\.yml$/);
   assert.ok(result.tree.references.length >= 3);
@@ -97,6 +98,20 @@ test('reports unknown, missing, and incorrectly typed template parameters', asyn
   assert.ok(result.errors.every((error) => error.line > 0));
 });
 
+test('validates reference syntax at maxDepth without descending past it', async (t) => {
+  const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
+  t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
+
+  const scanner = new TemplateScanner(
+    new CachingRegistry(cacheDirectory, 100, true),
+    pipelineRoot
+  );
+  const result = await scanner.scan('deploy.yml', { ...config, maxDepth: 3 });
+
+  assert.ok(result.errors.some((error) => error.message.includes('use "parameters:", not "parameter:"')));
+  assert.equal(result.tree.tree.children[0].children[0].children[0].children.length, 0);
+});
+
 test('directory scan descends into nested pipeline folders', async (t) => {
   const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
   t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
@@ -110,4 +125,11 @@ test('directory scan descends into nested pipeline folders', async (t) => {
 
   assert.ok(scannedFiles.includes('build.yml'));
   assert.ok(scannedFiles.includes('deploy.yml'));
+});
+
+test('validates multi-document pipeline YAML without false parse errors', async () => {
+  const content = await fs.readFile(path.join(pipelineRoot, 'deploy.yml'), 'utf8');
+  const diagnostics = new YamlValidator().validate(content, 'deploy.yml');
+
+  assert.equal(diagnostics.some((diagnostic) => diagnostic.code === 'PARSE_ERROR'), false);
 });

@@ -56,6 +56,7 @@ export class ADOYAMLInspectorExtension {
     this.registerDisposables();
     this.extensionContext.subscriptions.push(...this.disposables);
     this.extensionContext.subscriptions.push(this.diagnostics);
+    this.extensionContext.subscriptions.push(this.referenceNavigator);
 
     // Initialize on activation
     this.initialize();
@@ -87,6 +88,12 @@ export class ADOYAMLInspectorExtension {
     this.disposables.push(
       vscode.commands.registerCommand('adoInspector.navigateToTemplate', async (node: TemplateTreeNode) => {
         await this.navigateToNode(node);
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.selectBreadcrumb', async () => {
+        await this.referenceNavigator.showBreadcrumbPicker();
       })
     );
 
@@ -129,6 +136,16 @@ export class ADOYAMLInspectorExtension {
       vscode.workspace.onDidOpenTextDocument(
         (document) => this.onDocumentOpen(document)
       )
+    );
+
+    this.disposables.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor?.document.languageId === 'yaml') {
+          this.updateTreeForActiveDocument();
+        } else {
+          this.referenceNavigator.clear();
+        }
+      })
     );
 
     // Workspace folder change listener
@@ -208,6 +225,7 @@ export class ADOYAMLInspectorExtension {
    */
   private async clearCache(): Promise<void> {
     this.cachingRegistry.clear();
+    await this.cachingRegistry.persist();
     console.log('[ADO Inspector] Cache cleared');
   }
 
@@ -398,6 +416,7 @@ export class ADOYAMLInspectorExtension {
         references: incomingReferences,
         errors: [],
       });
+      this.referenceNavigator.setActivePath(activePath);
       return;
     }
 
@@ -405,6 +424,7 @@ export class ADOYAMLInspectorExtension {
       (result) => path.resolve(result.tree.root) === activePath
     );
     this.treeProvider.setTree(activeResult?.tree ?? this.scanResults[0]?.tree ?? null);
+    this.referenceNavigator.setActivePath(activePath);
   }
 
   /**

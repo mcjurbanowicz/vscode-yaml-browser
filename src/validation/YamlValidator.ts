@@ -14,12 +14,29 @@ export class YamlValidator {
     this.diagnostics = [];
 
     try {
-      const ast = yaml.parse(content, {
+      const documents = yaml.parseAllDocuments(content, {
         prettyErrors: true,
       });
 
-      if (ast && typeof ast === 'object') {
-        this.validateDocument(ast, filePath, 0);
+      for (const document of documents) {
+        for (const error of document.errors) {
+          const position = error.linePos?.[0];
+          this.diagnostics.push({
+            file: filePath,
+            line: position?.line ?? 1,
+            column: position?.col ?? 1,
+            message: error.message,
+            severity: 'error',
+            code: 'PARSE_ERROR',
+          });
+        }
+
+        if (document.errors.length === 0) {
+          const ast = document.toJS();
+          if (ast && typeof ast === 'object') {
+            this.validateDocument(ast, filePath, 0);
+          }
+        }
       }
     } catch (error) {
       this.diagnostics.push({

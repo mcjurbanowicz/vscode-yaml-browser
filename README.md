@@ -14,7 +14,7 @@ chmod +x setup-wsl.sh
 
 The setup script installs Node.js 22 for the WSL user and installs dependencies with `npm ci` when a lockfile is present. It does not install VS Code or require root access. Open the WSL folder in VS Code with `code .`, then press `F5` to launch the Extension Development Host.
 
-For manual setup and troubleshooting, see [WSL_SETUP.md](WSL_SETUP.md).
+For manual setup and troubleshooting, see `WSL_SETUP.md` in the workspace.
 
 ## Build
 
