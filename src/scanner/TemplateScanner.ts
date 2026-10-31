@@ -270,15 +270,6 @@ export class TemplateScanner {
     const currentAncestors = new Set(ancestors).add(fullPath);
 
     for (const reference of [...templateReferences]) {
-      if (reference.parameterSyntaxError) {
-        errors.push({
-          file: reference.sourceFile,
-          line: reference.line,
-          column: reference.column,
-          message: reference.parameterSyntaxError,
-          type: 'error',
-        });
-      }
       if (currentDepth >= config.maxDepth) {
         continue;
       }
@@ -298,9 +289,6 @@ export class TemplateScanner {
         config,
         currentDepth + 1,
         currentAncestors
-      );
-      errors.push(
-        ...this.validateTemplateParameters(reference, childResult.tree.parameters)
       );
       childResult.tree.depth = currentDepth + 1;
       childResult.tree.isRoot = false;
@@ -372,7 +360,12 @@ export class TemplateScanner {
 
       const objectValue = value as Record<string, unknown>;
       const templatePath = objectValue.template;
-      if (typeof templatePath === 'string' && !templatePath.includes('@')) {
+      if (
+        typeof templatePath === 'string' &&
+        !templatePath.includes('@') &&
+        !templatePath.includes('${{') &&
+        !templatePath.includes('$(')
+      ) {
         const resolvedPath = this.resolveTemplatePath(
           templatePath,
           filePath,
@@ -388,10 +381,6 @@ export class TemplateScanner {
           column: location?.column ?? 1,
           path: resolvedPath,
           parameters: this.extractParametersFromContext(objectValue),
-          parameterSyntaxError:
-            objectValue.parameter !== undefined && objectValue.parameters === undefined
-              ? 'Azure DevOps template invocations use "parameters:", not "parameter:".'
-              : undefined,
           depth: currentDepth + 1,
           id: `${filePath}|${currentDepth + 1}|${resolvedPath}`,
         });
@@ -426,84 +415,6 @@ export class TemplateScanner {
       }
     }
     return undefined;
-  }
-
-  private validateTemplateParameters(
-    reference: TemplateReference,
-    definitions: Record<string, unknown> | null
-  ): TemplateScanError[] {
-    if (!definitions) {
-      return [];
-    }
-
-    const diagnostics: TemplateScanError[] = [];
-    const passed = reference.parameters ?? {};
-    for (const parameterName of Object.keys(passed)) {
-      if (!(parameterName in definitions)) {
-        diagnostics.push({
-          file: reference.sourceFile,
-          line: reference.line,
-          column: reference.column,
-          message: `Template does not declare parameter "${parameterName}".`,
-          type: 'error',
-        });
-      }
-    }
-
-    for (const [parameterName, definition] of Object.entries(definitions)) {
-      if (!definition || typeof definition !== 'object') {
-        continue;
-      }
-      const parameterDefinition = definition as Record<string, unknown>;
-      const hasDefault = Object.prototype.hasOwnProperty.call(parameterDefinition, 'default');
-      if (!hasDefault && !(parameterName in passed)) {
-        diagnostics.push({
-          file: reference.sourceFile,
-          line: reference.line,
-          column: reference.column,
-          message: `Required template parameter "${parameterName}" is not supplied.`,
-          type: 'error',
-        });
-        continue;
-      }
-
-      if (!(parameterName in passed)) {
-        continue;
-      }
-      const expectedType = parameterDefinition.type;
-      const actualValue = passed[parameterName];
-      const isValid = expectedType === 'string'
-        ? typeof actualValue === 'string'
-        : expectedType === 'number'
-          ? typeof actualValue === 'number'
-          : expectedType === 'boolean'
-            ? typeof actualValue === 'boolean'
-            : expectedType === 'object'
-              ? typeof actualValue === 'object' && actualValue !== null
-              : true;
-      if (!isValid) {
-        diagnostics.push({
-          file: reference.sourceFile,
-          line: reference.line,
-          column: reference.column,
-          message: `Template parameter "${parameterName}" expects ${String(expectedType)}.`,
-          type: 'error',
-        });
-      }
-
-      const values = parameterDefinition.values;
-      if (Array.isArray(values) && !values.includes(actualValue)) {
-        diagnostics.push({
-          file: reference.sourceFile,
-          line: reference.line,
-          column: reference.column,
-          message: `Value for template parameter "${parameterName}" is not one of its declared values.`,
-          type: 'error',
-        });
-      }
-    }
-
-    return diagnostics;
   }
 
   /**

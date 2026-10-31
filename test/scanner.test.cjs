@@ -23,7 +23,7 @@ test('scans nested template references and respects maxDepth', async (t) => {
   const scanner = new TemplateScanner(cache, pipelineRoot);
   const result = await scanner.scan('deploy.yml', config);
 
-  assert.ok(result.errors.some((error) => error.message.includes('use "parameters:", not "parameter:"')));
+  assert.equal(result.errors.length, 0);
   assert.equal(result.tree.tree.children.length, 1);
   assert.match(result.tree.tree.children[0].path, /deploy-template\.yml$/);
   assert.ok(result.tree.references.length >= 3);
@@ -70,19 +70,21 @@ test('invalidates cached trees when a nested template changes', async (t) => {
   );
 });
 
-test('reports unknown, missing, and incorrectly typed template parameters', async (t) => {
-  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-params-'));
+test('finds file references in generic YAML without interpreting comments or expressions', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-refs-'));
   const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
   t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
   t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
 
+  const templatesDirectory = path.join(fixtureRoot, 'templates');
+  await fs.mkdir(templatesDirectory);
   await fs.writeFile(
     path.join(fixtureRoot, 'main.yml'),
-    'steps:\n  - template: child.yml\n    parameters:\n      count: four\n      extra: true\n'
+    '# template: missing.yml\nmetadata:\n  owner: team\nincludes:\n  - template: templates/child.yaml\n  - template: "${{ parameters.templatePath }}"\n'
   );
   await fs.writeFile(
-    path.join(fixtureRoot, 'child.yml'),
-    'parameters:\n  - name: count\n    type: number\n  - name: required\n    type: string\nsteps: []\n'
+    path.join(templatesDirectory, 'child.yaml'),
+    'name: generic template\ncontent:\n  enabled: true\n'
   );
 
   const scanner = new TemplateScanner(
@@ -90,15 +92,13 @@ test('reports unknown, missing, and incorrectly typed template parameters', asyn
     fixtureRoot
   );
   const result = await scanner.scan('main.yml', { ...config, maxDepth: 1 });
-  const messages = result.errors.map((error) => error.message);
 
-  assert.ok(messages.some((message) => message.includes('does not declare parameter "extra"')));
-  assert.ok(messages.some((message) => message.includes('expects number')));
-  assert.ok(messages.some((message) => message.includes('Required template parameter "required"')));
-  assert.ok(result.errors.every((error) => error.line > 0));
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.tree.references.length, 1);
+  assert.equal(result.tree.references[0].path, path.join(templatesDirectory, 'child.yaml'));
 });
 
-test('validates reference syntax at maxDepth without descending past it', async (t) => {
+test('does not descend past maxDepth while still finding local references', async (t) => {
   const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
   t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
 
@@ -108,7 +108,6 @@ test('validates reference syntax at maxDepth without descending past it', async 
   );
   const result = await scanner.scan('deploy.yml', { ...config, maxDepth: 3 });
 
-  assert.ok(result.errors.some((error) => error.message.includes('use "parameters:", not "parameter:"')));
   assert.equal(result.tree.tree.children[0].children[0].children[0].children.length, 0);
 });
 
@@ -125,6 +124,7 @@ test('directory scan descends into nested pipeline folders', async (t) => {
 
   assert.ok(scannedFiles.includes('build.yml'));
   assert.ok(scannedFiles.includes('deploy.yml'));
+  assert.ok(scannedFiles.includes('hello.yaml'));
 });
 
 test('validates multi-document pipeline YAML without false parse errors', async () => {
@@ -132,4 +132,11 @@ test('validates multi-document pipeline YAML without false parse errors', async 
   const diagnostics = new YamlValidator().validate(content, 'deploy.yml');
 
   assert.equal(diagnostics.some((diagnostic) => diagnostic.code === 'PARSE_ERROR'), false);
+});
+
+test('accepts valid YAML without applying pipeline-specific schema rules', () => {
+  const content = 'metadata:\n  owner: team\nvariables:\n  - name: 1\n    value: enabled\n';
+  const diagnostics = new YamlValidator().validate(content, 'generic.yaml');
+
+  assert.deepEqual(diagnostics, []);
 });

@@ -389,41 +389,80 @@ export class ADOYAMLInspectorExtension {
     }
 
     const activePath = path.resolve(activeDocument.uri.fsPath);
-    const incomingReferences = this.scanResults
-      .flatMap((result) => result.tree.references)
-      .filter((reference) => path.resolve(reference.path) === activePath);
-    const referencingFiles = [...new Set(incomingReferences.map((reference) => reference.sourceFile))];
+    const normalizePath = (filePath: string): string => {
+      const normalizedPath = path.resolve(filePath);
+      return process.platform === 'win32'
+        ? normalizedPath.toLowerCase()
+        : normalizedPath;
+    };
+    const activePathKey = normalizePath(activePath);
+    const references = this.scanResults.flatMap((result) => result.tree.references);
+    const outgoingReferences = references.filter(
+      (reference) => normalizePath(reference.sourceFile) === activePathKey
+    );
+    const incomingReferences = references.filter(
+      (reference) => normalizePath(reference.path) === activePathKey
+    );
+    const activeResult = this.scanResults.find(
+      (result) => normalizePath(result.tree.root) === activePathKey
+    );
+    const children: TemplateNode[] = [];
+    const seenEdges = new Set<string>();
 
-    if (referencingFiles.length > 0) {
+    for (const reference of outgoingReferences) {
+      const targetPath = path.resolve(reference.path);
+      const edgeKey = `references|${normalizePath(targetPath)}`;
+      if (normalizePath(targetPath) !== activePathKey && !seenEdges.has(edgeKey)) {
+        seenEdges.add(edgeKey);
+        children.push({
+          path: targetPath,
+          depth: 1,
+          isRoot: false,
+          relationship: 'references',
+          parameters: reference.parameters,
+          referencedLine: reference.line,
+          children: [],
+        });
+      }
+    }
+
+    for (const reference of incomingReferences) {
+      const sourcePath = path.resolve(reference.sourceFile);
+      const edgeKey = `referenced-by|${normalizePath(sourcePath)}`;
+      if (normalizePath(sourcePath) !== activePathKey && !seenEdges.has(edgeKey)) {
+        seenEdges.add(edgeKey);
+        children.push({
+          path: sourcePath,
+          depth: 1,
+          isRoot: false,
+          relationship: 'referenced-by',
+          parameters: null,
+          referencedLine: reference.line,
+          children: [],
+        });
+      }
+    }
+
+    if (children.length > 0) {
       const root: TemplateNode = {
         path: activePath,
         depth: 0,
         isRoot: true,
-        parameters: null,
+        parameters: activeResult?.tree.tree.parameters ?? null,
         referencedLine: 0,
-        children: referencingFiles.map((sourceFile) => ({
-          path: sourceFile,
-          depth: 1,
-          isRoot: false,
-          parameters: null,
-          referencedLine: 0,
-          children: [],
-        })),
+        children,
       };
       this.treeProvider.setTree({
         root: activePath,
         tree: root,
-        references: incomingReferences,
+        references: [...outgoingReferences, ...incomingReferences],
         errors: [],
       });
       this.referenceNavigator.setActivePath(activePath);
       return;
     }
 
-    const activeResult = this.scanResults.find(
-      (result) => path.resolve(result.tree.root) === activePath
-    );
-    this.treeProvider.setTree(activeResult?.tree ?? this.scanResults[0]?.tree ?? null);
+    this.treeProvider.setTree(activeResult?.tree ?? null);
     this.referenceNavigator.setActivePath(activePath);
   }
 

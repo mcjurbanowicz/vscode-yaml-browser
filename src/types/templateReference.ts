@@ -9,8 +9,6 @@ export interface TemplateReference {
   path: string;
   /** Parameters passed to this template invocation */
   parameters: Record<string, unknown> | null;
-  /** Error when the invocation uses invalid parameter syntax */
-  parameterSyntaxError?: string;
   /** The depth level in the template hierarchy (0 = root) */
   depth: number;
   /** Unique identifier for this reference */
@@ -30,6 +28,8 @@ export interface TemplateNode {
   referencedLine: number;
   /** Whether this template is the root file */
   isRoot: boolean;
+  /** Direction of an adjacent reference in the active-file navigation tree */
+  relationship?: 'references' | 'referenced-by';
 }
 
 export interface TemplateReferenceTree {

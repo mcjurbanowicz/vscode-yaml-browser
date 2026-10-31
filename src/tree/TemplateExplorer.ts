@@ -104,9 +104,15 @@ export class TemplateExplorerProvider implements vscode.TreeDataProvider<Templat
 
   private createNode(node: TemplateNode, parent: TemplateTreeNode | null): TemplateTreeNode {
     const children = node.children.map((child) => this.createNode(child, null));
+    const fileName = node.path.split(/[\\/]/).pop() || node.path;
+    const label = node.relationship === 'references'
+      ? `References: ${fileName}`
+      : node.relationship === 'referenced-by'
+        ? `Referenced by: ${fileName}`
+        : fileName;
     const treeNode = new TemplateTreeNode(
       node.path,
-      node.path.split(/[\\/]/).pop() || node.path,
+      label,
       node.path,
       'file',
       node.isRoot ? 'pipeline' : 'template',

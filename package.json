@@ -2,7 +2,7 @@
   "name": "ado-yaml-inspector",
   "displayName": "Azure DevOps YAML Inspector",
   "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "publisher": "ado-inspector",
   "engines": {
     "vscode": "^1.96.0"
