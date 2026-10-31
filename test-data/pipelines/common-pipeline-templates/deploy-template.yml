@@ -9,6 +9,10 @@ parameters:
     default: 'ubuntu-latest'
     description: 'Build image reference'
 
+variables:
+- name: buildImage
+  value: 'ubuntu-latest'
+
 stages:
   - ${{ if eq(parameters.environment, 'staging') }}:
       - template: build-template.yml

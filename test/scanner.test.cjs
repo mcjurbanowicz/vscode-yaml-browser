@@ -207,11 +207,11 @@ test('builds a clickable YAML overview with optional conditions and parameters',
   };
 
   assert.deepEqual(nodes.map((node) => node.label), [
-    'parameters >',
-    'variables >',
-    'schedules >',
-    'trigger >',
-    'stages >',
+    'PARAMETERS >',
+    'VARIABLES >',
+    'SCHEDULES >',
+    'TRIGGER >',
+    'STAGES >',
   ]);
   assert.equal(findNode(nodes, 'parameter-0').label, 'region');
   assert.equal(findNode(nodes, 'parameter-0').iconColor, 'foreground');
@@ -226,9 +226,9 @@ test('builds a clickable YAML overview with optional conditions and parameters',
   assert.ok(findNode(nodes, 'stage-0-job-0').children.some((node) => node.label === 'Run tests'));
   assert.ok(findNode(nodes, 'stage-0-job-0-steps-step-0-condition'));
   assert.ok(findNode(nodes, 'stage-0-job-0-steps-step-0-parameters'));
-  assert.ok(nodes.every((node) => node.label !== 'jobs >'));
+  assert.ok(nodes.every((node) => node.label !== 'JOBS >'));
   assert.ok(
-    findNode(nodes, 'stage-0-job-0').children.every((node) => node.label !== 'steps >')
+    findNode(nodes, 'stage-0-job-0').children.every((node) => node.label !== 'STEPS >')
   );
   assert.equal(content.slice(findNode(nodes, 'stage-0').offset).startsWith('stage: Build'), true);
 
@@ -313,7 +313,7 @@ test('includes structure from every YAML document without displaying document se
     showStepParameters: false,
   });
 
-  assert.deepEqual(nodes.map((node) => node.label), ['parameters >', 'stages >']);
+  assert.deepEqual(nodes.map((node) => node.label), ['PARAMETERS >', 'STAGES >']);
   assert.equal(nodes[0].children[0].label, 'first');
   assert.equal(nodes[1].children[0].label, 'Second');
   assert.notEqual(nodes[0].id, nodes[1].id);

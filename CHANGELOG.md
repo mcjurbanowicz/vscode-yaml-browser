@@ -1,8 +1,13 @@
 # Changelog
 
+## 0.0.9
+- Fixed expand/collapse controls so they update the YAML Structure tree.
+
 ## 0.0.8
 - Set parameter icons to the theme’s default foreground color.
 - Moved YAML Structure into a dedicated YAML Inspector panel and added a Validate YAML action.
+- Added panel toolbar toggles for conditions and stage, job, and step parameters.
+- Added separate panel controls to expand/collapse the structure tree and fold/unfold the active YAML editor.
 - Added stage, job, and step condition examples to pipeline fixtures.
 - Removed the duplicate “Find Template References” editor-title button.
 

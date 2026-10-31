@@ -172,11 +172,11 @@ export class ExtensionSettingsManager {
   /**
    * Update a specific setting.
    */
-  updateSetting<T extends keyof ExtensionSettings>(
+  async updateSetting<T extends keyof ExtensionSettings>(
     key: T,
     value: ExtensionSettings[T]
-  ): void {
-    vscode.workspace.getConfiguration(this.extensionId).update(
+  ): Promise<void> {
+    await vscode.workspace.getConfiguration(this.extensionId).update(
       key,
       value,
       vscode.ConfigurationTarget.Global

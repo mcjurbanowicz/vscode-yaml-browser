@@ -354,7 +354,7 @@ function buildDocumentSections(
 
     nodes.push(sectionNode(
       sectionName,
-      `${sectionName} >`,
+      `${sectionName.toUpperCase()} >`,
       pair.value,
       pairOffset(pair),
       entries,

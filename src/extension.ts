@@ -4,7 +4,6 @@ import * as os from 'os';
 import { CachingRegistry } from './caching/CachingRegistry';
 import { TemplateScanner, ScanConfig, ScanResult } from './scanner/TemplateScanner';
 import { TemplateExplorerProvider, TemplateTreeNode } from './tree/TemplateExplorer';
-import { ReferenceNavigator } from './navigation/ReferenceNavigator';
 import { TemplateDocumentLinkProvider } from './navigation/TemplateDocumentLinks';
 import { ExtensionSettingsManager } from './extensionSettings';
 import { YamlValidator } from './validation/YamlValidator';
@@ -31,7 +30,7 @@ export class ADOYAMLInspectorExtension {
   private yamlValidator: YamlValidator;
   private treeProvider: TemplateExplorerProvider;
   private readonly structureTreeProvider: YamlStructureViewProvider;
-  private referenceNavigator: ReferenceNavigator;
+  private readonly structureTreeView: vscode.TreeView<YamlStructureItem>;
   private disposables: vscode.Disposable[] = [];
   private readonly diagnostics: vscode.DiagnosticCollection;
   private scanResults: ScanResult[] = [];
@@ -53,14 +52,17 @@ export class ADOYAMLInspectorExtension {
     this.yamlValidator = new YamlValidator();
     this.treeProvider = new TemplateExplorerProvider();
     this.structureTreeProvider = new YamlStructureViewProvider();
-    this.referenceNavigator = new ReferenceNavigator(this.treeProvider);
+    this.structureTreeView = vscode.window.createTreeView(
+      'adoInspectorPanelStructureTree',
+      { treeDataProvider: this.structureTreeProvider }
+    );
     this.diagnostics = vscode.languages.createDiagnosticCollection('adoInspector');
 
     // Register disposables
     this.registerDisposables();
     this.extensionContext.subscriptions.push(...this.disposables);
+    this.extensionContext.subscriptions.push(this.structureTreeView);
     this.extensionContext.subscriptions.push(this.diagnostics);
-    this.extensionContext.subscriptions.push(this.referenceNavigator);
     this.extensionContext.subscriptions.push(this.structureTreeProvider);
 
     // Initialize on activation
@@ -116,14 +118,44 @@ export class ADOYAMLInspectorExtension {
     );
 
     this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.collapseStructureTree', async () => {
+        await this.structureTreeProvider.collapseAll();
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.expandStructureTree', async () => {
+        await this.structureTreeProvider.expandAll(this.structureTreeView);
+      })
+    );
+
+    this.disposables.push(
       vscode.commands.registerCommand('adoInspector.validateYaml', () => {
         this.validateActiveYaml();
       })
     );
 
     this.disposables.push(
-      vscode.commands.registerCommand('adoInspector.selectBreadcrumb', async () => {
-        await this.referenceNavigator.showBreadcrumbPicker();
+      vscode.commands.registerCommand('adoInspector.toggleShowConditions', async () => {
+        await this.toggleStructureSetting('showConditions');
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.toggleShowStageParameters', async () => {
+        await this.toggleStructureSetting('showStageParameters');
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.toggleShowJobParameters', async () => {
+        await this.toggleStructureSetting('showJobParameters');
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.toggleShowStepParameters', async () => {
+        await this.toggleStructureSetting('showStepParameters');
       })
     );
 
@@ -131,14 +163,6 @@ export class ADOYAMLInspectorExtension {
       vscode.commands.registerCommand('adoInspector.toggleNode', (node: TemplateTreeNode) => {
         this.treeProvider.toggleExpansion(node);
       })
-    );
-
-    // Tree view provider
-    this.disposables.push(
-      vscode.window.registerTreeDataProvider(
-        'adoInspectorStructureTree',
-        this.structureTreeProvider
-      )
     );
 
     this.disposables.push(
@@ -173,7 +197,6 @@ export class ADOYAMLInspectorExtension {
         if (editor?.document.languageId === 'yaml') {
           this.updateTreeForActiveDocument();
         } else {
-          this.referenceNavigator.clear();
           this.updateTreeForActiveDocument();
         }
       })
@@ -309,7 +332,7 @@ export class ADOYAMLInspectorExtension {
    * Navigate to a specific node in the tree.
    */
   private async navigateToNode(node: TemplateTreeNode): Promise<void> {
-    await this.referenceNavigator.navigateToNode(node);
+    await this.treeProvider.openTemplate(node);
   }
 
   private async navigateToYamlElement(item: YamlStructureItem): Promise<void> {
@@ -421,6 +444,13 @@ export class ADOYAMLInspectorExtension {
     void vscode.window.showWarningMessage(
       `Validation found ${diagnostics.length} issue(s): ${errors} error(s), ${warnings} warning(s).`
     );
+  }
+
+  private async toggleStructureSetting(
+    key: 'showConditions' | 'showStageParameters' | 'showJobParameters' | 'showStepParameters'
+  ): Promise<void> {
+    await this.settingsManager.updateSetting(key, !this.settingsManager.settings[key]);
+    this.updateTreeForActiveDocument();
   }
 
   private publishTemplateDiagnostics(): void {
@@ -559,12 +589,10 @@ export class ADOYAMLInspectorExtension {
         references: [...outgoingReferences, ...incomingReferences],
         errors: [],
       });
-      this.referenceNavigator.setActivePath(activePath);
       return;
     }
 
     this.treeProvider.setTree(activeResult?.tree ?? null);
-    this.referenceNavigator.setActivePath(activePath);
   }
 
   /**

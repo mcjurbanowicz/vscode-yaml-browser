@@ -5,6 +5,7 @@ import { referenceDisplayPath } from './referencePath';
 
 export class YamlStructureItem extends vscode.TreeItem {
   children: YamlStructureItem[] = [];
+  parent: YamlStructureItem | undefined;
 
   constructor(
     label: string,
@@ -25,6 +26,7 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
   >();
   readonly onDidChangeTreeData = this.changeEmitter.event;
   private rootItems: YamlStructureItem[] = [];
+  private allExpanded = true;
 
   getTreeItem(element: YamlStructureItem): vscode.TreeItem {
     return element;
@@ -32,6 +34,30 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
 
   getChildren(element?: YamlStructureItem): YamlStructureItem[] {
     return element?.children ?? this.rootItems;
+  }
+
+  getParent(element: YamlStructureItem): YamlStructureItem | undefined {
+    return element.parent;
+  }
+
+  async collapseAll(): Promise<void> {
+    this.setAllExpanded(false);
+    await vscode.commands.executeCommand(
+      'workbench.actions.treeView.adoInspectorPanelStructureTree.collapseAll'
+    );
+  }
+
+  async expandAll(treeView: vscode.TreeView<YamlStructureItem>): Promise<void> {
+    this.setAllExpanded(true);
+    for (const item of this.rootItems) {
+      await this.revealExpandedItems(treeView, item);
+    }
+  }
+
+  private setAllExpanded(expanded: boolean): void {
+    this.allExpanded = expanded;
+    this.updateExpansionState(this.rootItems, expanded);
+    this.changeEmitter.fire();
   }
 
   setDocument(
@@ -116,32 +142,39 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
   ): YamlStructureItem {
     const item = new YamlStructureItem(
       label,
-      children.length
-        ? vscode.TreeItemCollapsibleState.Expanded
-        : vscode.TreeItemCollapsibleState.None,
+      this.getCollapsibleState(children),
       filePath,
       offset
     );
     item.children = children;
+    for (const child of children) {
+      child.parent = item;
+    }
     item.id = `group:${label}`;
     item.iconPath = new vscode.ThemeIcon(icon);
     return item;
   }
 
-  private createStructureItem(node: YamlStructureNode, filePath: string): YamlStructureItem {
-    const children = node.children.map((child) => this.createStructureItem(child, filePath));
+  private createStructureItem(
+    node: YamlStructureNode,
+    filePath: string,
+    parent?: YamlStructureItem
+  ): YamlStructureItem {
     const item = new YamlStructureItem(
       node.label,
-      children.length
-        ? vscode.TreeItemCollapsibleState.Expanded
+      node.children.length > 0
+        ? this.allExpanded
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None,
       filePath,
       node.offset
     );
-    item.children = children;
+    item.parent = parent;
+    item.children = node.children.map((child) => this.createStructureItem(child, filePath, item));
     item.id = node.id;
     item.iconPath = new vscode.ThemeIcon(
-      node.icon ?? (children.length ? 'symbol-structure' : 'symbol-field'),
+      node.icon ?? (item.children.length ? 'symbol-structure' : 'symbol-field'),
       node.iconColor ? new vscode.ThemeColor(node.iconColor) : undefined
     );
     item.command = {
@@ -150,6 +183,41 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
       arguments: [item],
     };
     return item;
+  }
+
+  private async revealExpandedItems(
+    treeView: vscode.TreeView<YamlStructureItem>,
+    item: YamlStructureItem
+  ): Promise<void> {
+    if (item.children.length === 0) {
+      return;
+    }
+    await treeView.reveal(item, { expand: true, select: false, focus: false });
+    for (const child of item.children) {
+      await this.revealExpandedItems(treeView, child);
+    }
+  }
+
+  private getCollapsibleState(
+    children: YamlStructureItem[]
+  ): vscode.TreeItemCollapsibleState {
+    if (children.length === 0) {
+      return vscode.TreeItemCollapsibleState.None;
+    }
+    return this.allExpanded
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.Collapsed;
+  }
+
+  private updateExpansionState(items: YamlStructureItem[], expanded: boolean): void {
+    for (const item of items) {
+      item.collapsibleState = item.children.length === 0
+        ? vscode.TreeItemCollapsibleState.None
+        : expanded
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed;
+      this.updateExpansionState(item.children, expanded);
+    }
   }
 
   private normalizePath(filePath: string): string {

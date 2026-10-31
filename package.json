@@ -2,7 +2,7 @@
   "name": "ado-yaml-inspector",
   "displayName": "Azure DevOps YAML Inspector",
   "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "ado-inspector",
   "engines": {
     "vscode": "^1.96.0"
@@ -126,8 +126,38 @@
         "category": "Azure DevOps YAML Inspector"
       },
       {
+        "command": "adoInspector.collapseStructureTree",
+        "title": "Azure DevOps: Collapse YAML Structure",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.expandStructureTree",
+        "title": "Azure DevOps: Expand YAML Structure",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
         "command": "adoInspector.validateYaml",
         "title": "Azure DevOps: Validate YAML",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowConditions",
+        "title": "Azure DevOps: Toggle Show Conditions",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowStageParameters",
+        "title": "Azure DevOps: Toggle Show Stage Parameters",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowJobParameters",
+        "title": "Azure DevOps: Toggle Show Job Parameters",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowStepParameters",
+        "title": "Azure DevOps: Toggle Show Step Parameters",
         "category": "Azure DevOps YAML Inspector"
       }
     ],
@@ -158,31 +188,125 @@
           "when": "config.adoInspector.enabled && editorLangId == yaml"
         },
         {
+          "command": "adoInspector.collapseStructureTree",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.expandStructureTree",
+          "when": "config.adoInspector.enabled"
+        },
+        {
           "command": "adoInspector.validateYaml",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowConditions",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowStageParameters",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowJobParameters",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowStepParameters",
           "when": "config.adoInspector.enabled && editorLangId == yaml"
         }
       ],
       "view/title": [
         {
           "command": "adoInspector.collapseYaml",
-          "when": "view == adoInspectorStructureTree",
-          "group": "navigation",
+          "when": "view == adoInspectorPanelStructureTree",
+          "group": "2_editor",
           "title": "Collapse YAML",
           "icon": "$(collapse-all)"
         },
         {
           "command": "adoInspector.expandYaml",
-          "when": "view == adoInspectorStructureTree",
-          "group": "navigation",
+          "when": "view == adoInspectorPanelStructureTree",
+          "group": "2_editor",
           "title": "Expand YAML",
           "icon": "$(expand-all)"
         },
         {
           "command": "adoInspector.validateYaml",
-          "when": "view == adoInspectorStructureTree && editorLangId == yaml",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml",
           "group": "navigation",
           "title": "Validate YAML",
           "icon": "$(check)"
+        },
+        {
+          "command": "adoInspector.collapseStructureTree",
+          "when": "view == adoInspectorPanelStructureTree",
+          "group": "1_tree",
+          "title": "Collapse Structure Tree",
+          "icon": "$(collapse-all)"
+        },
+        {
+          "command": "adoInspector.expandStructureTree",
+          "when": "view == adoInspectorPanelStructureTree",
+          "group": "1_tree",
+          "title": "Expand Structure Tree",
+          "icon": "$(expand-all)"
+        },
+        {
+          "command": "adoInspector.toggleShowConditions",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showConditions",
+          "group": "1_showOptions",
+          "title": "Show Conditions",
+          "icon": "$(eye)"
+        },
+        {
+          "command": "adoInspector.toggleShowConditions",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showConditions",
+          "group": "1_showOptions",
+          "title": "Hide Conditions",
+          "icon": "$(eye-closed)"
+        },
+        {
+          "command": "adoInspector.toggleShowStageParameters",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showStageParameters",
+          "group": "1_showOptions",
+          "title": "Show Stage Parameters",
+          "icon": "$(eye)"
+        },
+        {
+          "command": "adoInspector.toggleShowStageParameters",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showStageParameters",
+          "group": "1_showOptions",
+          "title": "Hide Stage Parameters",
+          "icon": "$(eye-closed)"
+        },
+        {
+          "command": "adoInspector.toggleShowJobParameters",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showJobParameters",
+          "group": "1_showOptions",
+          "title": "Show Job Parameters",
+          "icon": "$(eye)"
+        },
+        {
+          "command": "adoInspector.toggleShowJobParameters",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showJobParameters",
+          "group": "1_showOptions",
+          "title": "Hide Job Parameters",
+          "icon": "$(eye-closed)"
+        },
+        {
+          "command": "adoInspector.toggleShowStepParameters",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showStepParameters",
+          "group": "1_showOptions",
+          "title": "Show Step Parameters",
+          "icon": "$(eye)"
+        },
+        {
+          "command": "adoInspector.toggleShowStepParameters",
+          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showStepParameters",
+          "group": "1_showOptions",
+          "title": "Hide Step Parameters",
+          "icon": "$(eye-closed)"
         }
       ]
     },
@@ -291,7 +415,7 @@
     "views": {
       "adoInspectorPanel": [
         {
-          "id": "adoInspectorStructureTree",
+          "id": "adoInspectorPanelStructureTree",
           "name": "YAML Structure"
         }
       ]
