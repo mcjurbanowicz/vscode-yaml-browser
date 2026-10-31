@@ -7,6 +7,7 @@ const { CachingRegistry } = require('../out/caching/CachingRegistry');
 const { TemplateScanner } = require('../out/scanner/TemplateScanner');
 const { YamlValidator } = require('../out/validation/YamlValidator');
 const { buildYamlStructure } = require('../out/tree/YamlStructure');
+const { referenceDisplayPath } = require('../out/tree/referencePath');
 
 const pipelineRoot = path.resolve(__dirname, '..', 'test-data', 'pipelines');
 const config = {
@@ -15,6 +16,23 @@ const config = {
   includePatterns: ['*.yml', '*.yaml'],
   excludePatterns: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
 };
+
+test('displays reference paths from their highest shared directory', () => {
+  const root = path.join(os.tmpdir(), 'ado-yaml-reference-paths');
+  const activePath = path.join(
+    root,
+    'pipelines',
+    'common-pipeline-templates',
+    'templatesLevelDown',
+    'helloDown.yaml'
+  );
+  const targetPath = path.join(root, 'pipelines', 'otherTemplates', 'hello.yaml');
+
+  assert.equal(
+    referenceDisplayPath(activePath, targetPath),
+    '../pipelines/otherTemplates/hello.yaml'
+  );
+});
 
 test('scans nested template references and respects maxDepth', async (t) => {
   const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
@@ -261,13 +279,19 @@ test('prefers explicit names and numbers duplicate step labels and task types', 
 
   assert.equal(findNode(nodes, 'stage-0').label, 'Stage display');
   assert.equal(findNode(nodes, 'stage-0').icon, 'symbol-class');
+  assert.equal(findNode(nodes, 'stage-0').iconColor, 'adoInspector.stageIconForeground');
   assert.equal(findNode(nodes, 'stage-0-job-0').label, 'Job display');
   assert.equal(findNode(nodes, 'stage-0-job-0').icon, 'symbol-method');
+  assert.equal(findNode(nodes, 'stage-0-job-0').iconColor, 'adoInspector.jobIconForeground');
   assert.equal(
     findNode(nodes, 'stage-0-job-0-steps-step-0').label,
     'FirstNamedStep / Step display #1'
   );
   assert.equal(findNode(nodes, 'stage-0-job-0-steps-step-0').icon, 'symbol-event');
+  assert.equal(
+    findNode(nodes, 'stage-0-job-0-steps-step-0').iconColor,
+    'adoInspector.stepIconForeground'
+  );
   assert.equal(
     findNode(nodes, 'stage-0-job-0-steps-step-1').label,
     'FirstNamedStep / Step display #2'
@@ -323,6 +347,12 @@ test('labels stage, job, and step template references by filename with a distinc
     'symbol-interface',
     'symbol-function',
     'symbol-operator',
+  ]);
+  assert.deepEqual(templateNodes.map(({ iconColor }) => iconColor), [
+    'adoInspector.stageTemplateIconForeground',
+    'adoInspector.stageTemplateIconForeground',
+    'adoInspector.jobTemplateIconForeground',
+    'adoInspector.stepTemplateIconForeground',
   ]);
   assert.equal(
     templateNodes[1].offset,

@@ -35,6 +35,10 @@ can be enabled with the `adoInspector.showConditions`,
 `adoInspector.showStageParameters`, `adoInspector.showJobParameters`, and
 `adoInspector.showStepParameters` settings.
 
+Stage, job, and step icons use distinct colors for concrete entries and
+templates. Their colors can be overridden with the corresponding
+`adoInspector.*IconForeground` entries in `workbench.colorCustomizations`.
+
 ## Test data
 
 Sample Azure DevOps pipeline YAML is under `test-data/pipelines/`.

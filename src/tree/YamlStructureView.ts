@@ -1,7 +1,7 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { TemplateReference } from '../types/templateReference';
 import { YamlStructureOptions, YamlStructureNode, buildYamlStructure } from './YamlStructure';
+import { referenceDisplayPath } from './referencePath';
 
 export class YamlStructureItem extends vscode.TreeItem {
   children: YamlStructureItem[] = [];
@@ -48,8 +48,8 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
     const filePath = document.uri.fsPath;
     const { referencesTo, referencedBy } = this.createReferenceItems(filePath, references);
     const referenceGroups = [
-      this.createGroup('Referenced by >', referencedBy, filePath, 0),
-      this.createGroup('References >', referencesTo, filePath, 0),
+      this.createGroup('Referenced by >', referencedBy, filePath, 0, 'arrow-up-left'),
+      this.createGroup('References >', referencesTo, filePath, 0, 'arrow-down-right'),
     ];
     const sections = buildYamlStructure(document.getText(), options)
       .map((node) => this.createStructureItem(node, filePath));
@@ -87,9 +87,7 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
       }
       seen.add(id);
 
-      const label = path.relative(path.dirname(activePath), targetPath)
-        .split(path.sep)
-        .join('/');
+      const label = referenceDisplayPath(activePath, targetPath);
       const item = new YamlStructureItem(
         label,
         vscode.TreeItemCollapsibleState.None,
@@ -113,7 +111,8 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
     label: string,
     children: YamlStructureItem[],
     filePath: string,
-    offset: number
+    offset: number,
+    icon: string
   ): YamlStructureItem {
     const item = new YamlStructureItem(
       label,
@@ -125,7 +124,7 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
     );
     item.children = children;
     item.id = `group:${label}`;
-    item.iconPath = new vscode.ThemeIcon('references');
+    item.iconPath = new vscode.ThemeIcon(icon);
     return item;
   }
 
@@ -142,7 +141,8 @@ export class YamlStructureViewProvider implements vscode.TreeDataProvider<YamlSt
     item.children = children;
     item.id = node.id;
     item.iconPath = new vscode.ThemeIcon(
-      node.icon ?? (children.length ? 'symbol-structure' : 'symbol-field')
+      node.icon ?? (children.length ? 'symbol-structure' : 'symbol-field'),
+      node.iconColor ? new vscode.ThemeColor(node.iconColor) : undefined
     );
     item.command = {
       command: 'adoInspector.navigateToYamlElement',

@@ -2,7 +2,7 @@
   "name": "ado-yaml-inspector",
   "displayName": "Azure DevOps YAML Inspector",
   "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "ado-inspector",
   "engines": {
     "vscode": "^1.96.0"
@@ -27,6 +27,68 @@
     "publish": "vsce publish"
   },
   "contributes": {
+    "colors": [
+      {
+        "id": "adoInspector.stageIconForeground",
+        "description": "Color for stage icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#C084FC",
+          "light": "#9333EA",
+          "highContrast": "#C084FC",
+          "highContrastLight": "#6B21A8"
+        }
+      },
+      {
+        "id": "adoInspector.stageTemplateIconForeground",
+        "description": "Color for stage template icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#A855F7",
+          "light": "#6B21A8",
+          "highContrast": "#A855F7",
+          "highContrastLight": "#581C87"
+        }
+      },
+      {
+        "id": "adoInspector.jobIconForeground",
+        "description": "Color for job icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#FB923C",
+          "light": "#EA580C",
+          "highContrast": "#FB923C",
+          "highContrastLight": "#9A3412"
+        }
+      },
+      {
+        "id": "adoInspector.jobTemplateIconForeground",
+        "description": "Color for job template icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#FACC15",
+          "light": "#A16207",
+          "highContrast": "#FACC15",
+          "highContrastLight": "#854D0E"
+        }
+      },
+      {
+        "id": "adoInspector.stepIconForeground",
+        "description": "Color for step icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#60A5FA",
+          "light": "#2563EB",
+          "highContrast": "#60A5FA",
+          "highContrastLight": "#1E40AF"
+        }
+      },
+      {
+        "id": "adoInspector.stepTemplateIconForeground",
+        "description": "Color for step template icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#3B82F6",
+          "light": "#1E3A8A",
+          "highContrast": "#3B82F6",
+          "highContrastLight": "#172554"
+        }
+      }
+    ],
     "commands": [
       {
         "command": "adoInspector.scanTemplates",

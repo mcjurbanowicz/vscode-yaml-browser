@@ -1,0 +1,40 @@
+jobs:
+- job: BuildJob
+  displayName: 'Build Job'
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+    - pwsh: |
+        Write-Output "Starting build process..."
+        Write-Output "Build image: ubuntu-latest"
+      displayName: 'Start Build'
+
+    - pwsh: |
+        Write-Output "Compiling source code..."
+        Write-Output "Compilation successful"
+      displayName: 'Compile Code'
+
+    - pwsh: |
+        Write-Output "Running unit tests..."
+        Write-Output "All tests passed"
+      displayName: 'Run Unit Tests'
+
+    - pwsh: |
+        Write-Output "Packaging application..."
+        Write-Output "Package created successfully"
+      displayName: 'Package Application'
+
+    - pwsh: |
+        Write-Output "Build process completed successfully"
+      displayName: 'Build Complete'
+      
+- job: helloJob
+  displayName: 'Hello Job'
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+    - pwsh: |
+        Write-Output "Hello from the hello job!"
+      displayName: 'Hello Step'
+
+    - template: ./templatesLevelDown/helloDown.yaml

@@ -13,6 +13,7 @@ export interface YamlStructureNode {
   offset: number;
   children: YamlStructureNode[];
   icon?: string;
+  iconColor?: string;
 }
 
 const sectionNames = [
@@ -26,9 +27,18 @@ const sectionNames = [
 ];
 
 const entryIcons = {
-  stage: { concrete: 'symbol-class', template: 'symbol-interface' },
-  job: { concrete: 'symbol-method', template: 'symbol-function' },
-  step: { concrete: 'symbol-event', template: 'symbol-operator' },
+  stage: {
+    concrete: { icon: 'symbol-class', color: 'adoInspector.stageIconForeground' },
+    template: { icon: 'symbol-interface', color: 'adoInspector.stageTemplateIconForeground' },
+  },
+  job: {
+    concrete: { icon: 'symbol-method', color: 'adoInspector.jobIconForeground' },
+    template: { icon: 'symbol-function', color: 'adoInspector.jobTemplateIconForeground' },
+  },
+  step: {
+    concrete: { icon: 'symbol-event', color: 'adoInspector.stepIconForeground' },
+    template: { icon: 'symbol-operator', color: 'adoInspector.stepTemplateIconForeground' },
+  },
 };
 
 function scalarValue(node: unknown): unknown {
@@ -191,7 +201,9 @@ function namedEntry(
     templateReference ? pairOffset(templateReference.pair) : offsetOf(node),
     children
   );
-  entry.icon = entryIcons[kind][templateName ? 'template' : 'concrete'];
+  const icon = entryIcons[kind][templateName ? 'template' : 'concrete'];
+  entry.icon = icon.icon;
+  entry.iconColor = icon.color;
   return entry;
 }
 

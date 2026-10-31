@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.7
+- Display template reference paths relative to their highest shared directory.
+- Color stage, job, and step icons by type, distinguishing templates from concrete entries.
+- Use directional arrow icons for “Referenced by” and “References”.
+
 ## 0.0.6
 - Flattened jobs and steps in the outline; added distinct icons for concrete and template entries.
 - Showed step names with display names and reference paths relative to the active file.
