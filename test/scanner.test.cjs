@@ -6,6 +6,7 @@ const test = require('node:test');
 const { CachingRegistry } = require('../out/caching/CachingRegistry');
 const { TemplateScanner } = require('../out/scanner/TemplateScanner');
 const { YamlValidator } = require('../out/validation/YamlValidator');
+const { buildYamlStructure } = require('../out/tree/YamlStructure');
 
 const pipelineRoot = path.resolve(__dirname, '..', 'test-data', 'pipelines');
 const config = {
@@ -139,4 +140,96 @@ test('accepts valid YAML without applying pipeline-specific schema rules', () =>
   const diagnostics = new YamlValidator().validate(content, 'generic.yaml');
 
   assert.deepEqual(diagnostics, []);
+});
+
+test('builds a clickable YAML overview with optional conditions and parameters', () => {
+  const content = [
+    'parameters:',
+    '  - name: region',
+    "    displayName: 'Target region'",
+    'variables:',
+    '  buildMode: release',
+    'schedules:',
+    "  - cron: '0 0 * * *'",
+    'trigger:',
+    '  - main',
+    'stages:',
+    '  - stage: Build',
+    "    displayName: 'Build stage'",
+    '    condition: succeeded()',
+    '    parameters:',
+    '      pool: linux',
+    '    jobs:',
+    '      - job: Compile',
+    "        displayName: 'Compile job'",
+    '        condition: succeeded()',
+    '        parameters:',
+    '          retries: 2',
+    '        steps:',
+    '          - script: npm test',
+    "            displayName: 'Run tests'",
+    '            condition: succeeded()',
+    '            parameters:',
+    '              timeout: 10',
+  ].join('\n');
+
+  const nodes = buildYamlStructure(content, {
+    showConditions: true,
+    showStageParameters: true,
+    showJobParameters: true,
+    showStepParameters: true,
+  });
+  const findNode = (items, id) => {
+    for (const item of items) {
+      if (item.id === id) return item;
+      const found = findNode(item.children, id);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  assert.deepEqual(nodes.map((node) => node.label), [
+    'parameters >',
+    'variables >',
+    'schedules >',
+    'trigger >',
+    'stages >',
+  ]);
+  assert.equal(findNode(nodes, 'parameter-0').label, 'region / Target region');
+  assert.equal(findNode(nodes, 'stage-0').label, 'Build / Build stage');
+  assert.ok(findNode(nodes, 'stage-0-condition'));
+  assert.ok(findNode(nodes, 'stage-0-parameters'));
+  assert.equal(findNode(nodes, 'stage-0-jobs-job-0').label, 'Compile / Compile job');
+  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-condition'));
+  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-parameters'));
+  assert.equal(findNode(nodes, 'stage-0-jobs-job-0-steps-step-0').label, 'npm test / Run tests');
+  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-steps-step-0-condition'));
+  assert.ok(findNode(nodes, 'stage-0-jobs-job-0-steps-step-0-parameters'));
+  assert.equal(content.slice(findNode(nodes, 'stage-0').offset).startsWith('stage: Build'), true);
+
+  const hiddenDetails = buildYamlStructure(content, {
+    showConditions: false,
+    showStageParameters: false,
+    showJobParameters: false,
+    showStepParameters: false,
+  });
+  assert.equal(findNode(hiddenDetails, 'stage-0-condition'), undefined);
+  assert.equal(findNode(hiddenDetails, 'stage-0-parameters'), undefined);
+  assert.equal(findNode(hiddenDetails, 'stage-0-jobs-job-0-condition'), undefined);
+  assert.equal(findNode(hiddenDetails, 'stage-0-jobs-job-0-steps-step-0-parameters'), undefined);
+});
+
+test('includes structure from every YAML document in a multi-document file', () => {
+  const content = 'parameters:\n  - name: first\n---\nstages:\n  - stage: Second\n';
+  const nodes = buildYamlStructure(content, {
+    showConditions: false,
+    showStageParameters: false,
+    showJobParameters: false,
+    showStepParameters: false,
+  });
+
+  assert.deepEqual(nodes.map((node) => node.label), ['Document 1 >', 'Document 2 >']);
+  assert.equal(nodes[0].children[0].label, 'parameters >');
+  assert.equal(nodes[1].children[0].label, 'stages >');
+  assert.equal(nodes[1].children[0].children[0].label, 'Second');
 });

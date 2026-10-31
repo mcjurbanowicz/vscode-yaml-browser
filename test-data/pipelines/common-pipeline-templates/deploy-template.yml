@@ -56,3 +56,4 @@ stages:
               Write-Output "Deployment completed to $(parameters.environment)"
               Write-Output "Deployment status: SUCCESS"
             displayName: 'Deployment Complete'
+          - template: ./templatesLevelDown/helloDown.yaml

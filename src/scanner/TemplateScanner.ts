@@ -479,7 +479,7 @@ export class TemplateScanner {
   private resolveTemplatePath(
     templatePath: string,
     sourceFile: string,
-    depth: number
+    _depth: number
   ): string {
     return path.isAbsolute(templatePath)
       ? path.normalize(templatePath)

@@ -13,6 +13,10 @@ export interface ExtensionSettings {
   cachePath: string;
   showPanel: boolean;
   highlightReferences: boolean;
+  showConditions: boolean;
+  showStageParameters: boolean;
+  showJobParameters: boolean;
+  showStepParameters: boolean;
 }
 
 export class ExtensionSettingsManager {
@@ -88,6 +92,30 @@ export class ExtensionSettingsManager {
         description:
           'Highlight template references in the editor.',
       },
+      showConditions: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Show stage, job, and step conditions in the YAML structure tree.',
+      },
+      showStageParameters: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Show stage parameters in the YAML structure tree.',
+      },
+      showJobParameters: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Show job parameters in the YAML structure tree.',
+      },
+      showStepParameters: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Show step parameters in the YAML structure tree.',
+      },
     },
     required: [],
     additionalProperties: false,
@@ -123,6 +151,10 @@ export class ExtensionSettingsManager {
       cachePath: config.get<string>('cachePath', '~/.ado-cache'),
       showPanel: config.get<boolean>('showPanel', true),
       highlightReferences: config.get<boolean>('highlightReferences', true),
+      showConditions: config.get<boolean>('showConditions', false),
+      showStageParameters: config.get<boolean>('showStageParameters', false),
+      showJobParameters: config.get<boolean>('showJobParameters', false),
+      showStepParameters: config.get<boolean>('showStepParameters', false),
     };
   }
 
@@ -131,6 +163,10 @@ export class ExtensionSettingsManager {
    */
   getSettings(): ExtensionSettings {
     return this.settings;
+  }
+
+  refreshSettings(): void {
+    this.settings = this.loadSettings();
   }
 
   /**

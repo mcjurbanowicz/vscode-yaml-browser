@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as os from 'os';
 import { CachingRegistry } from './caching/CachingRegistry';
 import { TemplateScanner, ScanConfig, ScanResult } from './scanner/TemplateScanner';
 import { TemplateExplorerProvider, TemplateTreeNode } from './tree/TemplateExplorer';
@@ -8,6 +9,7 @@ import { TemplateDocumentLinkProvider } from './navigation/TemplateDocumentLinks
 import { ExtensionSettingsManager } from './extensionSettings';
 import { YamlValidator } from './validation/YamlValidator';
 import { TemplateNode, TemplateScanError } from './types/templateReference';
+import { YamlStructureItem, YamlStructureViewProvider } from './tree/YamlStructureView';
 
 /**
  * Azure DevOps YAML Inspector Extension
@@ -28,6 +30,7 @@ export class ADOYAMLInspectorExtension {
   private templateScanner: TemplateScanner;
   private yamlValidator: YamlValidator;
   private treeProvider: TemplateExplorerProvider;
+  private readonly structureTreeProvider: YamlStructureViewProvider;
   private referenceNavigator: ReferenceNavigator;
   private disposables: vscode.Disposable[] = [];
   private readonly diagnostics: vscode.DiagnosticCollection;
@@ -49,6 +52,7 @@ export class ADOYAMLInspectorExtension {
     );
     this.yamlValidator = new YamlValidator();
     this.treeProvider = new TemplateExplorerProvider();
+    this.structureTreeProvider = new YamlStructureViewProvider();
     this.referenceNavigator = new ReferenceNavigator(this.treeProvider);
     this.diagnostics = vscode.languages.createDiagnosticCollection('adoInspector');
 
@@ -57,6 +61,7 @@ export class ADOYAMLInspectorExtension {
     this.extensionContext.subscriptions.push(...this.disposables);
     this.extensionContext.subscriptions.push(this.diagnostics);
     this.extensionContext.subscriptions.push(this.referenceNavigator);
+    this.extensionContext.subscriptions.push(this.structureTreeProvider);
 
     // Initialize on activation
     this.initialize();
@@ -92,6 +97,25 @@ export class ADOYAMLInspectorExtension {
     );
 
     this.disposables.push(
+      vscode.commands.registerCommand(
+        'adoInspector.navigateToYamlElement',
+        async (item: YamlStructureItem) => this.navigateToYamlElement(item)
+      )
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.collapseYaml', async () => {
+        await this.foldActiveYaml('editor.foldAll');
+      })
+    );
+
+    this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.expandYaml', async () => {
+        await this.foldActiveYaml('editor.unfoldAll');
+      })
+    );
+
+    this.disposables.push(
       vscode.commands.registerCommand('adoInspector.selectBreadcrumb', async () => {
         await this.referenceNavigator.showBreadcrumbPicker();
       })
@@ -106,8 +130,8 @@ export class ADOYAMLInspectorExtension {
     // Tree view provider
     this.disposables.push(
       vscode.window.registerTreeDataProvider(
-        'adoInspectorTemplateTree',
-        this.treeProvider
+        'adoInspectorStructureTree',
+        this.structureTreeProvider
       )
     );
 
@@ -144,6 +168,7 @@ export class ADOYAMLInspectorExtension {
           this.updateTreeForActiveDocument();
         } else {
           this.referenceNavigator.clear();
+          this.updateTreeForActiveDocument();
         }
       })
     );
@@ -153,6 +178,15 @@ export class ADOYAMLInspectorExtension {
       vscode.workspace.onDidChangeWorkspaceFolders(
         () => this.onWorkspaceFolderChange()
       )
+    );
+
+    this.disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('adoInspector')) {
+          this.settingsManager.refreshSettings();
+          this.updateTreeForActiveDocument();
+        }
+      })
     );
 
     const yamlWatcher = vscode.workspace.createFileSystemWatcher(
@@ -272,6 +306,30 @@ export class ADOYAMLInspectorExtension {
     await this.referenceNavigator.navigateToNode(node);
   }
 
+  private async navigateToYamlElement(item: YamlStructureItem): Promise<void> {
+    if (!item.filePath) {
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument(item.filePath);
+    const editor = await vscode.window.showTextDocument(document);
+    const position = document.positionAt(item.offset ?? 0);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(
+      new vscode.Range(position, position),
+      vscode.TextEditorRevealType.InCenter
+    );
+  }
+
+  private async foldActiveYaml(command: 'editor.foldAll' | 'editor.unfoldAll'): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'yaml') {
+      await vscode.window.showInformationMessage('Open a YAML file before using this command.');
+      return;
+    }
+    await vscode.commands.executeCommand(command);
+  }
+
   /**
    * Handle text document changes.
    */
@@ -279,6 +337,9 @@ export class ADOYAMLInspectorExtension {
     const document = event.document;
     if (document.languageId === 'yaml') {
       this.validateDocument(document);
+      if (vscode.window.activeTextEditor?.document.uri.toString() === document.uri.toString()) {
+        this.updateTreeForActiveDocument();
+      }
     }
   }
 
@@ -383,8 +444,18 @@ export class ADOYAMLInspectorExtension {
 
   private updateTreeForActiveDocument(): void {
     const activeDocument = vscode.window.activeTextEditor?.document;
+    const references = this.scanResults.flatMap((result) => result.tree.references);
+    this.structureTreeProvider.setDocument(
+      activeDocument?.languageId === 'yaml' ? activeDocument : undefined,
+      references,
+      this.settingsManager.settings
+    );
     if (!activeDocument) {
       this.treeProvider.setTree(this.scanResults[0]?.tree ?? null);
+      return;
+    }
+    if (activeDocument.languageId !== 'yaml') {
+      this.treeProvider.setTree(null);
       return;
     }
 
@@ -396,7 +467,6 @@ export class ADOYAMLInspectorExtension {
         : normalizedPath;
     };
     const activePathKey = normalizePath(activePath);
-    const references = this.scanResults.flatMap((result) => result.tree.references);
     const outgoingReferences = references.filter(
       (reference) => normalizePath(reference.sourceFile) === activePathKey
     );
@@ -556,7 +626,7 @@ export class ADOYAMLInspectorExtension {
 
     // Resolve ~ to the user's home directory
     if (cachePath.startsWith('~')) {
-      const home = require('os').homedir();
+      const home = os.homedir();
       return path.resolve(home, cachePath.slice(1));
     }
 

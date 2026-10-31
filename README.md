@@ -22,6 +22,19 @@ For manual setup and troubleshooting, see `WSL_SETUP.md` in the workspace.
 npm run compile
 ```
 
+## YAML structure view
+
+The **YAML Structure** view in Explorer shows the active YAML file's parameters,
+variables, schedules, triggers, stages, jobs, and steps. Select an item to jump
+to its source location. The expandable **Template references** group lists local
+files referenced by the active file and files that reference it.
+
+Use the view's **Collapse YAML** and **Expand YAML** buttons to fold or unfold
+the active YAML editor. Optional conditions and stage, job, and step parameters
+can be enabled with the `adoInspector.showConditions`,
+`adoInspector.showStageParameters`, `adoInspector.showJobParameters`, and
+`adoInspector.showStepParameters` settings.
+
 ## Test data
 
 Sample Azure DevOps pipeline YAML is under `test-data/pipelines/`.
