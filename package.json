@@ -1,0 +1,163 @@
+{
+  "name": "ado-yaml-inspector",
+  "displayName": "Azure DevOps YAML Inspector",
+  "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
+  "version": "0.0.1",
+  "publisher": "ado-inspector",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "adoInspector.scanTemplates",
+        "title": "Azure DevOps: Scan Templates",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.clearCache",
+        "title": "Azure DevOps: Clear Cache",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.openReferencingFile",
+        "title": "Azure DevOps: Open Referencing File",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.navigateToTemplate",
+        "title": "Azure DevOps: Navigate to Template",
+        "category": "Azure DevOps YAML Inspector"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "adoInspector.scanTemplates",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.clearCache",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.openReferencingFile",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.navigateToTemplate",
+          "when": "config.adoInspector.enabled"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Azure DevOps YAML Inspector",
+      "properties": {
+        "adoInspector.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Azure DevOps YAML Inspector extension."
+        },
+        "adoInspector.scanRoot": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "description": "Root directory to scan for Azure DevOps YAML files. Can be an absolute path or relative to the workspace root."
+        },
+        "adoInspector.includePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "*.yml",
+            "*.yaml"
+          ],
+          "description": "File patterns to include when scanning for YAML files."
+        },
+        "adoInspector.excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/.git/**"
+          ],
+          "description": "File patterns to exclude when scanning for YAML files."
+        },
+        "adoInspector.maxDepth": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum depth of template traversal. A value of 3 means the extension will traverse up to 3 levels of nested templates."
+        },
+        "adoInspector.minDepth": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Minimum depth of template traversal. A value of 1 excludes the root file itself."
+        },
+        "adoInspector.cacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable caching of resolved templates to avoid re-scanning."
+        },
+        "adoInspector.cachePath": {
+          "type": "string",
+          "default": "~/.ado-cache",
+          "description": "Path to the cache directory for storing resolved templates."
+        },
+        "adoInspector.showPanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the YAML Inspector panel when opening a YAML file."
+        },
+        "adoInspector.highlightReferences": {
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight template references in the editor."
+        }
+      }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "adoInspectorTemplateTree",
+          "name": "Azure DevOps Templates"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "eslint": "^9.20.0",
+    "typescript": "^5.8.0",
+    "@vscode/vsce": "^3.1.0"
+  },
+  "dependencies": {
+    "yaml": "^2.7.0"
+  }
+}
