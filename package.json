@@ -2,7 +2,7 @@
   "name": "ado-yaml-inspector",
   "displayName": "Azure DevOps YAML Inspector",
   "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
-  "version": "0.0.10",
+  "version": "0.0.12",
   "publisher": "ado-inspector",
   "engines": {
     "vscode": "^1.96.0"
@@ -15,11 +15,12 @@
     "onStartupFinished",
     "onLanguage:yaml"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "clean": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
-    "compile": "npm run clean && tsc -p ./",
+    "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['out', 'dist']) fs.rmSync(dir, { recursive: true, force: true })\"",
+    "compile": "npm run clean && tsc -p ./ && npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --minify --sourcemap=external --outfile=dist/extension.js",
     "test": "npm run compile && node --test",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
@@ -146,6 +147,11 @@
         "category": "Azure DevOps YAML Inspector"
       },
       {
+        "command": "adoInspector.generateDecisionPaths",
+        "title": "Azure DevOps: Generate Decision Paths",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
         "command": "adoInspector.toggleShowConditions",
         "title": "Azure DevOps: Toggle Show Conditions",
         "category": "Azure DevOps YAML Inspector"
@@ -209,6 +215,10 @@
           "when": "config.adoInspector.enabled && editorLangId == yaml"
         },
         {
+          "command": "adoInspector.generateDecisionPaths",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
           "command": "adoInspector.toggleShowConditions",
           "when": "config.adoInspector.enabled && editorLangId == yaml"
         },
@@ -227,25 +237,11 @@
       ],
       "view/title": [
         {
-          "command": "adoInspector.collapseYaml",
-          "when": "view == adoInspectorPanelStructureTree",
-          "group": "2_editor",
-          "title": "Collapse YAML",
-          "icon": "$(collapse-all)"
-        },
-        {
-          "command": "adoInspector.expandYaml",
-          "when": "view == adoInspectorPanelStructureTree",
-          "group": "2_editor",
-          "title": "Expand YAML",
-          "icon": "$(expand-all)"
-        },
-        {
-          "command": "adoInspector.validateYaml",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml",
+          "command": "adoInspector.generateDecisionPaths",
+          "when": "(view == adoInspectorPanelStructureTree || view == adoInspectorPanelTemplateExplorer) && editorLangId == yaml",
           "group": "navigation",
-          "title": "Validate YAML",
-          "icon": "$(check)"
+          "title": "Generate Decision Paths",
+          "icon": "$(graph)"
         },
         {
           "command": "adoInspector.expandTemplates",
@@ -253,76 +249,6 @@
           "group": "navigation",
           "title": "Expand Templates",
           "icon": "$(layers)"
-        },
-        {
-          "command": "adoInspector.collapseStructureTree",
-          "when": "view == adoInspectorPanelStructureTree",
-          "group": "1_tree",
-          "title": "Collapse Structure Tree",
-          "icon": "$(collapse-all)"
-        },
-        {
-          "command": "adoInspector.expandStructureTree",
-          "when": "view == adoInspectorPanelStructureTree",
-          "group": "1_tree",
-          "title": "Expand Structure Tree",
-          "icon": "$(expand-all)"
-        },
-        {
-          "command": "adoInspector.toggleShowConditions",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showConditions",
-          "group": "1_showOptions",
-          "title": "Show Conditions",
-          "icon": "$(eye)"
-        },
-        {
-          "command": "adoInspector.toggleShowConditions",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showConditions",
-          "group": "1_showOptions",
-          "title": "Hide Conditions",
-          "icon": "$(eye-closed)"
-        },
-        {
-          "command": "adoInspector.toggleShowStageParameters",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showStageParameters",
-          "group": "1_showOptions",
-          "title": "Show Stage Parameters",
-          "icon": "$(eye)"
-        },
-        {
-          "command": "adoInspector.toggleShowStageParameters",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showStageParameters",
-          "group": "1_showOptions",
-          "title": "Hide Stage Parameters",
-          "icon": "$(eye-closed)"
-        },
-        {
-          "command": "adoInspector.toggleShowJobParameters",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showJobParameters",
-          "group": "1_showOptions",
-          "title": "Show Job Parameters",
-          "icon": "$(eye)"
-        },
-        {
-          "command": "adoInspector.toggleShowJobParameters",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showJobParameters",
-          "group": "1_showOptions",
-          "title": "Hide Job Parameters",
-          "icon": "$(eye-closed)"
-        },
-        {
-          "command": "adoInspector.toggleShowStepParameters",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && !config.adoInspector.showStepParameters",
-          "group": "1_showOptions",
-          "title": "Show Step Parameters",
-          "icon": "$(eye)"
-        },
-        {
-          "command": "adoInspector.toggleShowStepParameters",
-          "when": "view == adoInspectorPanelStructureTree && editorLangId == yaml && config.adoInspector.showStepParameters",
-          "group": "1_showOptions",
-          "title": "Hide Step Parameters",
-          "icon": "$(eye-closed)"
         }
       ]
     },
@@ -375,7 +301,7 @@
           "default": 0,
           "minimum": 0,
           "maximum": 10,
-          "description": "Minimum depth of template traversal. A value of 1 excludes the root file itself."
+          "description": "Minimum template depth included in the tree. The root file remains as an anchor; higher values flatten shallower template nodes."
         },
         "adoInspector.cacheEnabled": {
           "type": "boolean",
@@ -422,6 +348,11 @@
     "viewsContainers": {
       "panel": [
         {
+          "id": "adoInspectorControlsPanel",
+          "title": "YAML Controls",
+          "icon": "resources/yaml-controls.svg"
+        },
+        {
           "id": "adoInspectorPanel",
           "title": "YAML Inspector",
           "icon": "resources/yaml-inspector.svg"
@@ -429,6 +360,12 @@
       ]
     },
     "views": {
+      "adoInspectorControlsPanel": [
+        {
+          "id": "adoInspectorPanelYamlControls",
+          "name": "YAML Controls"
+        }
+      ],
       "adoInspectorPanel": [
         {
           "id": "adoInspectorPanelTemplateExplorer",
@@ -446,11 +383,10 @@
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.20.0",
     "typescript": "^5.8.0",
-    "@vscode/vsce": "^3.1.0"
-  },
-  "dependencies": {
-    "yaml": "^2.7.0"
+    "yaml": "^2.9.1"
   }
 }

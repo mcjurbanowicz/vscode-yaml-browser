@@ -6,6 +6,7 @@ export interface CacheEntry {
   fileUri: string;
   data: TemplateReferenceTree;
   fileSignatures?: Record<string, number>;
+  configurationSignature?: string;
   timestamp: number;
   accessedAt: number;
   hitCount: number;
@@ -95,6 +96,7 @@ export class CachingRegistry {
       fileUri,
       data: result,
       fileSignatures: {},
+      configurationSignature: undefined,
       timestamp: Date.now(),
       accessedAt: Date.now(),
       hitCount: 0,
@@ -157,6 +159,8 @@ export class CachingRegistry {
       ([fileUri, entry]) => ({
         fileUri,
         data: entry.data,
+        fileSignatures: entry.fileSignatures,
+        configurationSignature: entry.configurationSignature,
         timestamp: entry.timestamp,
         accessedAt: entry.accessedAt,
         hitCount: entry.hitCount,
@@ -189,10 +193,45 @@ export class CachingRegistry {
         path.join(this.cachePath, this.cacheFileName),
         'utf-8'
       );
-      const entries: CacheEntry[] = JSON.parse(cacheData);
+      const entries: unknown = JSON.parse(cacheData);
+      if (!Array.isArray(entries)) {
+        throw new Error('Cache data must be an array.');
+      }
 
-      for (const entry of entries) {
-        this.cache.set(entry.fileUri, entry);
+      for (const value of entries) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          continue;
+        }
+        const entry = value as Partial<CacheEntry>;
+        if (
+          typeof entry.fileUri !== 'string' ||
+          !this.isTemplateReferenceTree(entry.data) ||
+          typeof entry.timestamp !== 'number'
+        ) {
+          continue;
+        }
+        const fileSignatures = this.isSignatureMap(entry.fileSignatures)
+          ? entry.fileSignatures
+          : undefined;
+        this.cache.set(entry.fileUri, {
+          fileUri: entry.fileUri,
+          data: entry.data,
+          fileSignatures,
+          configurationSignature:
+            typeof entry.configurationSignature === 'string'
+              ? entry.configurationSignature
+              : undefined,
+          timestamp: entry.timestamp,
+          accessedAt:
+            typeof entry.accessedAt === 'number'
+              ? entry.accessedAt
+              : entry.timestamp,
+          hitCount: typeof entry.hitCount === 'number' ? entry.hitCount : 0,
+        });
+      }
+
+      while (this.cache.size > this.maxSize) {
+        this.evictOldest();
       }
 
       this.metrics.currentSize = this.cache.size;
@@ -207,6 +246,28 @@ export class CachingRegistry {
         `[ADO Inspector] Could not restore cache: ${error}`
       );
     }
+  }
+
+  private isTemplateReferenceTree(value: unknown): value is TemplateReferenceTree {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+    const tree = value as Partial<TemplateReferenceTree>;
+    return (
+      typeof tree.root === 'string' &&
+      Boolean(tree.tree) &&
+      Array.isArray(tree.references) &&
+      Array.isArray(tree.errors)
+    );
+  }
+
+  private isSignatureMap(value: unknown): value is Record<string, number> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+    return Object.values(value as Record<string, unknown>).every(
+      (signature) => typeof signature === 'number'
+    );
   }
 
   /**
@@ -256,7 +317,8 @@ export class CachingRegistry {
   set(
     fileUri: string,
     data: TemplateReferenceTree,
-    fileSignatures: Record<string, number> = {}
+    fileSignatures: Record<string, number> = {},
+    configurationSignature?: string
   ): void {
     if (!this.enabled) {
       return;
@@ -266,6 +328,7 @@ export class CachingRegistry {
       fileUri,
       data,
       fileSignatures,
+      configurationSignature,
       timestamp: Date.now(),
       accessedAt: Date.now(),
       hitCount: 0,

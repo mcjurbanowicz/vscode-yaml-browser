@@ -45,10 +45,15 @@ export class TemplateScanner {
     config: ScanConfig
   ): Promise<ScanResult> {
     const fullPath = path.resolve(this.workspaceRoot, filePath);
+    const configurationSignature = this.getConfigurationSignature(config);
 
     // Check cache first
     const cachedEntry = this.cache.getEntry(fullPath);
-    if (cachedEntry && await this.isCacheEntryFresh(cachedEntry.fileSignatures)) {
+    if (
+      cachedEntry &&
+      cachedEntry.configurationSignature === configurationSignature &&
+      await this.isCacheEntryFresh(cachedEntry.fileSignatures)
+    ) {
       console.log(
         `[ADO Inspector] Cache hit for: ${filePath} (depth: ${config.maxDepth})`
       );
@@ -69,7 +74,12 @@ export class TemplateScanner {
         return { tree: result, errors: result.errors };
       }
       // Store in cache
-      this.cache.set(fullPath, result, await this.getFileSignatures(result));
+      this.cache.set(
+        fullPath,
+        result,
+        await this.getFileSignatures(result),
+        configurationSignature
+      );
       return { tree: result, errors: result.errors };
     } catch (error) {
       const scanErrors: TemplateScanError[] = [
@@ -98,6 +108,15 @@ export class TemplateScanner {
         errors: scanErrors,
       };
     }
+  }
+
+  private getConfigurationSignature(config: ScanConfig): string {
+    return JSON.stringify({
+      maxDepth: config.maxDepth,
+      minDepth: config.minDepth,
+      includePatterns: [...config.includePatterns].sort(),
+      excludePatterns: [...config.excludePatterns].sort(),
+    });
   }
 
   private async isCacheEntryFresh(
@@ -262,8 +281,6 @@ export class TemplateScanner {
         document,
         fullPath,
         currentDepth,
-        config.maxDepth,
-        config.minDepth,
         content
       )
     );
@@ -294,7 +311,11 @@ export class TemplateScanner {
       childResult.tree.isRoot = false;
       childResult.tree.parameters = reference.parameters;
       childResult.tree.referencedLine = reference.line;
-      tree.children.push(childResult.tree);
+      if (childResult.tree.depth < config.minDepth) {
+        tree.children.push(...childResult.tree.children);
+      } else {
+        tree.children.push(childResult.tree);
+      }
       templateReferences.push(...childResult.references);
       errors.push(...childResult.errors);
     }
@@ -341,8 +362,6 @@ export class TemplateScanner {
     doc: unknown,
     filePath: string,
     currentDepth: number,
-    maxDepth: number,
-    minDepth: number,
     sourceContent: string
   ): TemplateReference[] {
     const references: TemplateReference[] = [];

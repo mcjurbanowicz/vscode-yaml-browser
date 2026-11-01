@@ -7,6 +7,10 @@ const { CachingRegistry } = require('../out/caching/CachingRegistry');
 const { TemplateScanner } = require('../out/scanner/TemplateScanner');
 const { YamlValidator } = require('../out/validation/YamlValidator');
 const { TemplateExpander } = require('../out/templates/TemplateExpander');
+const {
+  collectScenarioInputs,
+  generateDecisionPaths,
+} = require('../out/decision/DecisionPathGenerator');
 const { buildYamlStructure } = require('../out/tree/YamlStructure');
 const { referenceDisplayPath } = require('../out/tree/referencePath');
 const yaml = require('yaml');
@@ -18,6 +22,96 @@ const config = {
   includePatterns: ['*.yml', '*.yaml'],
   excludePatterns: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
 };
+
+test('suggests scenario values from Azure condition expressions', () => {
+  const inputs = collectScenarioInputs([
+    'parameters:',
+    '  - name: environment',
+    '    type: string',
+    "    default: dev",
+    "    values: [dev, test, prod]",
+    'variables:',
+    '  - name: Build.SourceBranch',
+    "    value: refs/heads/main",
+    'stages:',
+    '  - stage: Deploy',
+    "    condition: and(eq(parameters.environment, 'prod'), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/'))",
+  ].join('\n'));
+
+  assert.equal(inputs.length, 2);
+  const environment = inputs.find((input) => input.key === 'parameters.environment');
+  assert.ok(environment.candidates.includes('dev'));
+  assert.ok(environment.candidates.includes('test'));
+  assert.ok(environment.candidates.includes('prod'));
+  const branch = inputs.find((input) => input.key === 'variables.Build.SourceBranch');
+  assert.ok(branch.candidates.includes('refs/heads/main'));
+  assert.ok(branch.candidates.includes('refs/heads/release/'));
+});
+
+test('generates scenario-highlighted paths for stage, job, and step conditions', () => {
+  const content = [
+    'parameters:',
+    '  - name: deploy',
+    '    default: false',
+    'stages:',
+    '  - stage: Build',
+    '    jobs:',
+    '      - job: Deploy',
+    '        condition: eq(parameters.deploy, true)',
+    '        steps:',
+    '          - script: echo deploy',
+    '            condition: succeeded()',
+    '  - stage: Release',
+    "    condition: eq(variables['Build.SourceBranch'], 'main')",
+  ].join('\n');
+  const result = generateDecisionPaths(content, {
+    'parameters.deploy': true,
+    'variables.Build.SourceBranch': 'main',
+  });
+
+  assert.match(result.mermaid, /Run job #quot;Deploy#quot;/);
+  assert.match(result.mermaid, /eq\(parameters\.deploy, true\)/);
+  assert.match(result.mermaid, /eq\(variables\['Build\.SourceBranch'\], 'main'\)/);
+  assert.equal(result.unresolvedConditions.length, 0);
+  assert.match(result.mermaid, /linkStyle/);
+});
+
+test('keeps unknown Azure runtime expressions as unresolved branches', () => {
+  const result = generateDecisionPaths(
+    [
+      'jobs:',
+      '  - job: Dependent',
+      "    condition: eq(dependencies.Build.result, 'Succeeded')",
+    ].join('\n'),
+    {}
+  );
+
+  assert.equal(result.unresolvedConditions.length, 1);
+  assert.match(result.unresolvedConditions[0], /dependencies\.Build\.result/);
+  assert.match(result.mermaid, /Yes/);
+  assert.match(result.mermaid, /No/);
+});
+
+test('models Azure compile-time if and else branches', () => {
+  const content = [
+    'parameters:',
+    '  - name: includeBuild',
+    '    default: false',
+    'stages:',
+    '  - ${{ if eq(parameters.includeBuild, true) }}:',
+    '      - stage: Build',
+    '  - ${{ else }}:',
+    '      - stage: SkipBuild',
+  ].join('\n');
+  const result = generateDecisionPaths(content, {
+    'parameters.includeBuild': false,
+  });
+
+  assert.match(result.mermaid, /Stage: Build/);
+  assert.match(result.mermaid, /Stage: SkipBuild/);
+  assert.match(result.mermaid, /Include stage block/);
+  assert.equal(result.unresolvedConditions.length, 0);
+});
 
 test('expands nested stage, job, and step templates with parameters', async (t) => {
   const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-expand-'));
@@ -93,6 +187,67 @@ test('expands nested stage, job, and step templates with parameters', async (t) 
   assert.equal(result.includes('template:'), false);
 });
 
+test('expands conditional template references from multi-document templates', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-expand-'));
+  t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
+
+  const pipelinePath = path.join(fixtureRoot, 'pipeline.yml');
+  const pipeline = [
+    'parameters:',
+    '  - name: includeBuild',
+    '    default: true',
+    '---',
+    'stages:',
+    '  - ${{ if eq(parameters.includeBuild, true) }}:',
+    '      - template: templates/build-stage.yml',
+  ].join('\n');
+  const templatesDirectory = path.join(fixtureRoot, 'templates');
+  await fs.mkdir(templatesDirectory);
+  await fs.writeFile(
+    path.join(templatesDirectory, 'build-stage.yml'),
+    [
+      'parameters:',
+      '  - name: stageName',
+      '    default: Build',
+      '---',
+      'stages:',
+      '  - stage: ${{ parameters.stageName }}',
+      '    jobs:',
+      '      - ${{ if eq(parameters.includeBuild, true) }}:',
+      '          - template: build-job.yml',
+      ].join('\n')
+  );
+  await fs.writeFile(
+      path.join(templatesDirectory, 'build-job.yml'),
+      [
+        'jobs:',
+        '  - job: Compile',
+        '    steps:',
+        '      - ${{ if eq(parameters.includeBuild, true) }}:',
+        '          - template: build-steps.yml',
+      ].join('\n')
+  );
+  await fs.writeFile(
+    path.join(templatesDirectory, 'build-steps.yml'),
+    'steps:\n  - script: echo compiled\n'
+  );
+
+  const expanded = await new TemplateExpander().expand(pipelinePath, pipeline);
+  const expandedYaml = yaml.parse(expanded);
+  const stage = expandedYaml.stages[0]['${{ if eq(parameters.includeBuild, true) }}'][0];
+  assert.equal(stage.stage, 'Build');
+  const job = stage.jobs[0]['${{ if eq(parameters.includeBuild, true) }}'][0];
+  assert.equal(job.job, 'Compile');
+  const step = job.steps[0]['${{ if eq(parameters.includeBuild, true) }}'][0];
+  assert.equal(step.script, 'echo compiled');
+  assert.equal(JSON.stringify(expandedYaml).includes('"template"'), false);
+  const decisionPaths = generateDecisionPaths(expanded, {
+    'parameters.includeBuild': true,
+  });
+  assert.match(decisionPaths.mermaid, /Stage: Build/);
+  assert.equal(decisionPaths.unresolvedConditions.length, 0);
+});
+
 test('reports circular local template references while expanding', async (t) => {
   const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-expand-'));
   t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
@@ -141,10 +296,54 @@ test('scans nested template references and respects maxDepth', async (t) => {
   assert.match(result.tree.tree.children[0].path, /deploy-template\.yml$/);
   assert.ok(result.tree.references.length >= 3);
 
-  cache.clear();
   const shallowResult = await scanner.scan('deploy.yml', { ...config, maxDepth: 1 });
   assert.equal(shallowResult.tree.tree.children.length, 1);
   assert.equal(shallowResult.tree.tree.children[0].children.length, 0);
+});
+
+test('expands extends templates into the pipeline root', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-extends-'));
+  t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
+
+  const templateDirectory = path.join(fixtureRoot, 'templates');
+  await fs.mkdir(templateDirectory);
+  const pipeline = [
+    'extends:',
+    '  template: templates/base.yml',
+    '  parameters:',
+    '    stageName: Compile',
+    'variables:',
+    '  pipelineOnly: enabled',
+    'trigger: main',
+  ].join('\n');
+  await fs.writeFile(
+    path.join(templateDirectory, 'base.yml'),
+    [
+      'parameters:',
+      '  - name: stageName',
+      '    default: Build',
+      'variables:',
+      '  templateOnly: enabled',
+      'stages:',
+      '  - stage: ${{ parameters.stageName }}',
+    ].join('\n')
+  );
+
+  const expanded = yaml.parse(
+    await new TemplateExpander().expand(
+      path.join(fixtureRoot, 'pipeline.yml'),
+      pipeline
+    )
+  );
+
+  assert.equal(expanded.extends, undefined);
+  assert.equal(expanded.parameters, undefined);
+  assert.equal(expanded.stages[0].stage, 'Compile');
+  assert.deepEqual(expanded.variables, {
+    templateOnly: 'enabled',
+    pipelineOnly: 'enabled',
+  });
+  assert.equal(expanded.trigger, 'main');
 });
 
 test('invalidates cached trees when a nested template changes', async (t) => {
@@ -181,6 +380,85 @@ test('invalidates cached trees when a nested template changes', async (t) => {
     after.tree.tree.children[0].children[0].path,
     path.join(templatesDirectory, 'third.yml')
   );
+});
+
+test('rebuilds cached trees when scan configuration changes', async (t) => {
+  const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
+  t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
+
+  const scanner = new TemplateScanner(
+    new CachingRegistry(cacheDirectory, 100, true),
+    pipelineRoot
+  );
+  const shallow = await scanner.scan('deploy.yml', { ...config, maxDepth: 1 });
+  assert.equal(shallow.tree.tree.children[0].children.length, 0);
+
+  const deep = await scanner.scan('deploy.yml', { ...config, maxDepth: 2 });
+  assert.ok(deep.tree.tree.children[0].children.length > 0);
+});
+
+test('minDepth flattens shallower template nodes while retaining the root anchor', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-depth-'));
+  const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
+  t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
+
+  const templatesDirectory = path.join(fixtureRoot, 'templates');
+  await fs.mkdir(templatesDirectory);
+  await fs.writeFile(
+    path.join(fixtureRoot, 'main.yml'),
+    'steps:\n  - template: templates/first.yml\n'
+  );
+  await fs.writeFile(
+    path.join(templatesDirectory, 'first.yml'),
+    'steps:\n  - template: second.yml\n'
+  );
+  await fs.writeFile(
+    path.join(templatesDirectory, 'second.yml'),
+    'steps: []\n'
+  );
+
+  const scanner = new TemplateScanner(
+    new CachingRegistry(cacheDirectory, 100, true),
+    fixtureRoot
+  );
+  const result = await scanner.scan('main.yml', { ...config, minDepth: 2 });
+
+  assert.equal(result.tree.tree.path, path.join(fixtureRoot, 'main.yml'));
+  assert.equal(result.tree.tree.children.length, 1);
+  assert.equal(result.tree.tree.children[0].path, path.join(templatesDirectory, 'second.yml'));
+  assert.equal(result.tree.tree.children[0].depth, 2);
+  assert.equal(result.tree.references.length, 2);
+});
+
+test('restores persisted file signatures and reuses a fresh scanner cache entry', async (t) => {
+  const fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-fixture-'));
+  const cacheDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-yaml-cache-'));
+  t.after(() => fs.rm(fixtureRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(cacheDirectory, { recursive: true, force: true }));
+
+  await fs.writeFile(
+    path.join(fixtureRoot, 'main.yml'),
+    'steps:\n  - template: child.yml\n'
+  );
+  await fs.writeFile(path.join(fixtureRoot, 'child.yml'), 'steps: []\n');
+
+  const scanConfig = { ...config, maxDepth: 1 };
+  const originalCache = new CachingRegistry(cacheDirectory, 100, true);
+  await new TemplateScanner(originalCache, fixtureRoot).scan('main.yml', scanConfig);
+  await originalCache.persist();
+
+  const restoredCache = new CachingRegistry(cacheDirectory, 100, true);
+  await restoredCache.restoreFromDisk();
+  const restoredEntry = restoredCache.getEntry(path.join(fixtureRoot, 'main.yml'));
+  assert.ok(restoredEntry.fileSignatures);
+  assert.ok(restoredEntry.configurationSignature);
+
+  const result = await new TemplateScanner(restoredCache, fixtureRoot).scan(
+    'main.yml',
+    scanConfig
+  );
+  assert.strictEqual(result.tree, restoredEntry.data);
 });
 
 test('finds file references in generic YAML without interpreting comments or expressions', async (t) => {

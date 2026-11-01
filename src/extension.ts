@@ -10,6 +10,12 @@ import { YamlValidator } from './validation/YamlValidator';
 import { TemplateNode, TemplateScanError } from './types/templateReference';
 import { YamlStructureItem, YamlStructureViewProvider } from './tree/YamlStructureView';
 import { TemplateExpander } from './templates/TemplateExpander';
+import { YamlControlsViewProvider } from './tree/YamlControlsView';
+import {
+  collectScenarioInputs,
+  generateDecisionPaths,
+  ScenarioInput,
+} from './decision/DecisionPathGenerator';
 
 /**
  * Azure DevOps YAML Inspector Extension
@@ -31,6 +37,7 @@ export class ADOYAMLInspectorExtension {
   private yamlValidator: YamlValidator;
   private treeProvider: TemplateExplorerProvider;
   private readonly templateTreeView: vscode.TreeView<TemplateTreeNode>;
+  private readonly controlsViewProvider: YamlControlsViewProvider;
   private readonly structureTreeProvider: YamlStructureViewProvider;
   private readonly structureTreeView: vscode.TreeView<YamlStructureItem>;
   private disposables: vscode.Disposable[] = [];
@@ -58,6 +65,7 @@ export class ADOYAMLInspectorExtension {
       'adoInspectorPanelTemplateExplorer',
       { treeDataProvider: this.treeProvider }
     );
+    this.controlsViewProvider = new YamlControlsViewProvider(this.settingsManager.settings);
     this.structureTreeProvider = new YamlStructureViewProvider();
     this.structureTreeView = vscode.window.createTreeView(
       'adoInspectorPanelStructureTree',
@@ -69,6 +77,13 @@ export class ADOYAMLInspectorExtension {
     this.registerDisposables();
     this.extensionContext.subscriptions.push(...this.disposables);
     this.extensionContext.subscriptions.push(this.templateTreeView);
+    this.extensionContext.subscriptions.push(
+      vscode.window.registerTreeDataProvider(
+        'adoInspectorPanelYamlControls',
+        this.controlsViewProvider
+      )
+    );
+    this.extensionContext.subscriptions.push(this.controlsViewProvider);
     this.extensionContext.subscriptions.push(this.structureTreeView);
     this.extensionContext.subscriptions.push(this.diagnostics);
     this.extensionContext.subscriptions.push(this.structureTreeProvider);
@@ -150,6 +165,12 @@ export class ADOYAMLInspectorExtension {
     );
 
     this.disposables.push(
+      vscode.commands.registerCommand('adoInspector.generateDecisionPaths', async () => {
+        await this.generateActiveDecisionPaths();
+      })
+    );
+
+    this.disposables.push(
       vscode.commands.registerCommand('adoInspector.toggleShowConditions', async () => {
         await this.toggleStructureSetting('showConditions');
       })
@@ -227,6 +248,7 @@ export class ADOYAMLInspectorExtension {
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('adoInspector')) {
           this.settingsManager.refreshSettings();
+          this.controlsViewProvider.updateSettings(this.settingsManager.settings);
           this.updateTreeForActiveDocument();
         }
       })
@@ -387,6 +409,120 @@ export class ADOYAMLInspectorExtension {
     }
   }
 
+  private async generateActiveDecisionPaths(): Promise<void> {
+    const document = vscode.window.activeTextEditor?.document;
+    if (!document || document.languageId !== 'yaml') {
+      vscode.window.showErrorMessage('Open a YAML pipeline before generating decision paths.');
+      return;
+    }
+
+    try {
+      const expandedContent = await this.templateExpander.expand(
+        document.uri.fsPath,
+        document.getText()
+      );
+      const inputs = collectScenarioInputs(expandedContent);
+      const values: Record<string, unknown> = {};
+      for (const input of inputs) {
+        const value = await this.promptForScenarioInput(input);
+        if (value.cancelled) {
+          return;
+        }
+        values[input.key] = value.value;
+      }
+
+      const result = generateDecisionPaths(expandedContent, values);
+      const inputsTable = inputs.length > 0
+        ? inputs.map((input) =>
+          `| ${input.kind} | \`${input.name}\` | \`${this.formatScenarioValue(values[input.key])}\` |`
+        ).join('\n')
+        : '| (none) | (none) | (none) |';
+      const unresolved = result.unresolvedConditions.length > 0
+        ? `\n\n> Some expressions could not be evaluated. Both branches are shown without a highlighted selection:\n>\n${result.unresolvedConditions.map((condition) => `> - \`${condition.replace(/`/g, '\\`')}\``).join('\n')}`
+        : '';
+      const statusAssumption =
+        '\n\n> Status functions assume prior stages/jobs succeeded; Azure runtime state and service-dependent expressions cannot be predicted locally.';
+      const markdown = [
+        `# Decision paths: ${path.basename(document.uri.fsPath)}`,
+        '',
+        'Highlighted edges show the route selected by the scenario values.',
+        '',
+        '| Input | Name | Simulated value |',
+        '| --- | --- | --- |',
+        inputsTable,
+        '',
+        '```mermaid',
+        result.mermaid,
+        '```',
+        unresolved,
+        statusAssumption,
+      ].join('\n');
+      const previewDocument = await vscode.workspace.openTextDocument({
+        language: 'markdown',
+        content: markdown,
+      });
+      await vscode.commands.executeCommand(
+        'markdown.showPreviewToSide',
+        previewDocument.uri
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Could not generate decision paths: ${message}`);
+    }
+  }
+
+  private async promptForScenarioInput(
+    input: ScenarioInput
+  ): Promise<{ cancelled: true } | { cancelled: false; value: unknown }> {
+    const choices: Array<{
+      label: string;
+      description: string;
+      value: unknown;
+      custom?: boolean;
+    }> =
+      input.candidates.map((value) => ({
+        label: this.formatScenarioValue(value),
+        description: Object.is(value, input.defaultValue) ? 'Declared default' : 'Found in condition',
+        value,
+      }));
+    choices.push({
+      label: 'Enter a custom value...',
+      description: `Set a simulated value for ${input.kind} "${input.name}"`,
+      value: undefined,
+      custom: true,
+    });
+    const selected = await vscode.window.showQuickPick(choices, {
+      placeHolder: `Choose a simulated value for ${input.kind} "${input.name}"`,
+      ignoreFocusOut: true,
+    });
+    if (!selected) {
+      return { cancelled: true };
+    }
+    if (!selected.custom) {
+      return { cancelled: false, value: selected.value };
+    }
+
+    const entered = await vscode.window.showInputBox({
+      prompt: `Enter a value for ${input.kind} "${input.name}" (JSON values are allowed)`,
+      value: input.defaultValue === undefined
+        ? undefined
+        : this.formatScenarioValue(input.defaultValue),
+      ignoreFocusOut: true,
+    });
+    if (entered === undefined) {
+      return { cancelled: true };
+    }
+    try {
+      return { cancelled: false, value: JSON.parse(entered) as unknown };
+    } catch {
+      return { cancelled: false, value: entered };
+    }
+  }
+
+  private formatScenarioValue(value: unknown): string {
+    return typeof value === 'string' ? value : JSON.stringify(value);
+  }
+
   private async foldActiveYaml(command: 'editor.foldAll' | 'editor.unfoldAll'): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'yaml') {
@@ -487,6 +623,7 @@ export class ADOYAMLInspectorExtension {
     key: 'showConditions' | 'showStageParameters' | 'showJobParameters' | 'showStepParameters'
   ): Promise<void> {
     await this.settingsManager.updateSetting(key, !this.settingsManager.settings[key]);
+    this.controlsViewProvider.updateSettings(this.settingsManager.settings);
     this.updateTreeForActiveDocument();
   }
 

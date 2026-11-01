@@ -30,13 +30,22 @@ parameters, variables, schedules, triggers, stages, jobs, and steps. Select an
 item to jump to its source location. The expandable **Template references**
 group lists local files referenced by the active file and files that reference it.
 
-Use **Collapse Structure Tree** and **Expand Structure Tree** to control the
-outline independently of **Collapse YAML** and **Expand YAML**, which fold or
-unfold the active editor. **Validate YAML** refreshes diagnostics for that file.
-The **Expand Templates** toolbar button opens an editable, unsaved YAML document
+The separate **YAML Controls** panel provides **Collapse YAML** and **Expand
+YAML** to fold or unfold the active editor, **Collapse Structure Tree** and
+**Expand Structure Tree** to control the outline, and **Validate YAML** to
+refresh diagnostics. Use its Show/Hide actions to toggle conditions and stage,
+job, and step parameters in the structure tree. The **Expand Templates** toolbar
+button opens an editable, unsaved YAML document
 with local stage, job, and step templates recursively inlined. Simple template
 parameter references are substituted; compile-time `if` and `each` expressions
 remain unchanged. The source pipeline and templates are not modified.
+Use **Generate Decision Paths** to simulate the conditions in either a pipeline
+or an already-expanded YAML document. The command suggests parameter and
+variable values found in condition expressions, highlights the route for the
+selected scenario in a Mermaid preview, and shows both branches when an
+expression is unsupported by the local evaluator or requires Azure runtime
+context. Status functions are simulated assuming previous work succeeded;
+actual Azure dependency and cancellation state cannot be inferred locally.
 Optional conditions and stage, job, and step parameters
 can be enabled with the `adoInspector.showConditions`,
 `adoInspector.showStageParameters`, `adoInspector.showJobParameters`, and

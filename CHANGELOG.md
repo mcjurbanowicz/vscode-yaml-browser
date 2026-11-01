@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.12
+- Added scenario-based decision path diagrams for pipeline conditions, with input suggestions derived from parameter defaults and values referenced by conditions.
+- Added a Mermaid preview for expanded local-template pipelines and explicitly reported expressions that need Azure runtime context.
+- Expanded `extends` templates into the unified pipeline root and covered conditional stage, job, and step template inlining.
+- Rebuilt scanner caches when scan settings change, persisted file signatures, and applied `minDepth` to the displayed reference tree.
+- Bundled the extension into a single runtime JavaScript file and excluded development/build files from the VSIX to reduce package size and improve startup performance.
+- Updated the VS Code extension packaging tool (`@vscode/vsce`).
+
+## 0.0.11
+- Added a YAML Controls view with editor folding, structure tree, validation, conditions, and parameter display actions.
+- Moved those controls from the YAML Structure toolbar into the dedicated view.
+
 ## 0.0.10
 - Restored the Template Explorer view in the YAML Inspector panel.
 - Added a panel action to recursively expand local templates into an editable YAML document, substituting simple parameter references.

@@ -29,20 +29,102 @@ export class TemplateExpander {
       throw new Error(`Circular template reference: ${filePath}`);
     }
 
-    const document = yaml.parseDocument(content, { prettyErrors: true });
-    if (document.errors.length > 0) {
+    const documents = yaml.parseAllDocuments(content, { prettyErrors: true });
+    const errors = documents.flatMap((document) => document.errors);
+    if (errors.length > 0) {
       throw new Error(
-        `Could not parse ${filePath}: ${document.errors.map((error) => error.message).join('; ')}`
+        `Could not parse ${filePath}: ${errors.map((error) => error.message).join('; ')}`
       );
     }
-    if (document.contents === null) {
+    if (documents.every((document) => document.contents === null)) {
       throw new Error(`No YAML content found in ${filePath}.`);
     }
 
-    const root = document.toJS();
+    const root = this.combineDocuments(
+      documents
+        .filter((document) => document.contents !== null)
+        .map((document) => document.toJS())
+    );
     const parameterValues = this.resolveParameters(root, suppliedParameters);
     const nextAncestors = new Set(ancestors).add(normalizedPath);
+
+    if (this.isMapping(root) && this.isMapping(root.extends)) {
+      const extendedTemplate = await this.expandTemplateReference(
+        root.extends,
+        filePath,
+        parameterValues,
+        nextAncestors
+      );
+      if (!this.isMapping(extendedTemplate)) {
+        throw new Error(`The extends template in ${filePath} must contain a YAML mapping.`);
+      }
+
+      const pipeline = { ...root };
+      delete pipeline.extends;
+      const expandedPipeline = await this.expandValue(
+        pipeline,
+        filePath,
+        parameterValues,
+        nextAncestors
+      );
+      if (!this.isMapping(expandedPipeline)) {
+        throw new Error(`The pipeline in ${filePath} must contain a YAML mapping.`);
+      }
+      return this.mergeExtendedPipeline(extendedTemplate, expandedPipeline);
+    }
+
     return this.expandValue(root, filePath, parameterValues, nextAncestors);
+  }
+
+  private isMapping(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private mergeExtendedPipeline(
+    template: Record<string, unknown>,
+    pipeline: Record<string, unknown>
+  ): Record<string, unknown> {
+    const merged = { ...template };
+    delete merged.parameters;
+
+    for (const [key, value] of Object.entries(pipeline)) {
+      const existing = merged[key];
+      if (
+        ['stages', 'jobs', 'steps'].includes(key) &&
+        Array.isArray(existing) &&
+        Array.isArray(value)
+      ) {
+        merged[key] = [...existing, ...value];
+      } else if (key === 'variables' && this.isMapping(existing) && this.isMapping(value)) {
+        merged[key] = { ...existing, ...value };
+      } else if (key === 'variables' && Array.isArray(existing) && Array.isArray(value)) {
+        merged[key] = [...existing, ...value];
+      } else {
+        merged[key] = value;
+      }
+    }
+
+    return merged;
+  }
+
+  private combineDocuments(documents: unknown[]): unknown {
+    if (documents.length === 1) {
+      return documents[0];
+    }
+
+    const combined: Record<string, unknown> = {};
+    for (const document of documents) {
+      if (!document || typeof document !== 'object' || Array.isArray(document)) {
+        throw new Error('Multi-document templates must contain YAML mappings.');
+      }
+      for (const [key, value] of Object.entries(document)) {
+        const existing = combined[key];
+        combined[key] = Array.isArray(existing) && Array.isArray(value)
+          ? [...existing, ...value]
+          : value;
+      }
+    }
+    return combined;
   }
 
   private resolveParameters(
@@ -76,7 +158,7 @@ export class TemplateExpander {
     filePath: string,
     parameters: ParameterValues,
     ancestors: Set<string>,
-    contextKey?: string
+    sectionContext?: string
   ): Promise<unknown> {
     if (typeof value === 'string') {
       return this.resolveValue(value, parameters);
@@ -84,7 +166,13 @@ export class TemplateExpander {
     if (Array.isArray(value)) {
       const expanded: unknown[] = [];
       for (const item of value) {
-        const result = await this.expandValue(item, filePath, parameters, ancestors, contextKey);
+        const result = await this.expandValue(
+          item,
+          filePath,
+          parameters,
+          ancestors,
+          sectionContext
+        );
         if (Array.isArray(result)) {
           expanded.push(...result);
         } else {
@@ -104,13 +192,22 @@ export class TemplateExpander {
         filePath,
         parameters,
         ancestors,
-        contextKey
+        sectionContext
       );
     }
 
     const expanded: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(objectValue)) {
-      expanded[key] = await this.expandValue(child, filePath, parameters, ancestors, key);
+      const childSectionContext = ['stages', 'jobs', 'steps'].includes(key)
+        ? key
+        : sectionContext;
+      expanded[key] = await this.expandValue(
+        child,
+        filePath,
+        parameters,
+        ancestors,
+        childSectionContext
+      );
     }
     return expanded;
   }
@@ -120,7 +217,7 @@ export class TemplateExpander {
     sourcePath: string,
     parameters: ParameterValues,
     ancestors: Set<string>,
-    contextKey?: string
+    sectionContext?: string
   ): Promise<unknown> {
     const templatePath = this.resolveValue(reference.template, parameters);
     if (typeof templatePath !== 'string' || templatePath.includes('${{')) {
@@ -152,12 +249,12 @@ export class TemplateExpander {
       ancestors
     );
     if (
-      contextKey &&
+      sectionContext &&
       expandedTemplate &&
       typeof expandedTemplate === 'object' &&
       !Array.isArray(expandedTemplate)
     ) {
-      const matchingSection = (expandedTemplate as Record<string, unknown>)[contextKey];
+      const matchingSection = (expandedTemplate as Record<string, unknown>)[sectionContext];
       if (matchingSection !== undefined) {
         return matchingSection;
       }

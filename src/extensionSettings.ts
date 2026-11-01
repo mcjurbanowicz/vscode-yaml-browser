@@ -66,7 +66,7 @@ export class ExtensionSettingsManager {
         minimum: 0,
         maximum: 10,
         description:
-          'Minimum depth of template traversal. A value of 1 excludes the root file itself.',
+          'Minimum template depth included in the tree. The root file remains as an anchor; higher values flatten shallower template nodes.',
       },
       cacheEnabled: {
         type: 'boolean',
