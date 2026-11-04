@@ -84,7 +84,7 @@ export class ExtensionSettingsManager {
         type: 'boolean',
         default: true,
         description:
-          'Show the YAML Inspector panel when opening a YAML file.',
+          'Open the YAML Inspector and YAML Controls panel containers when VS Code starts.',
       },
       highlightReferences: {
         type: 'boolean',

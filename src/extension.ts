@@ -278,6 +278,23 @@ export class ADOYAMLInspectorExtension {
   private async initialize(): Promise<void> {
     console.log('[ADO Inspector] Extension activated');
 
+    if (this.settingsManager.settings.showPanel) {
+      try {
+        await vscode.commands.executeCommand(
+          'workbench.view.extension.adoInspectorControlsPanel'
+        );
+        await vscode.commands.executeCommand(
+          'workbench.view.extension.adoInspectorPanel'
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[ADO Inspector] Could not open default panels: ${message}`);
+        void vscode.window.showErrorMessage(
+          `Could not open the YAML Inspector panels: ${message}`
+        );
+      }
+    }
+
     // Restore cache from disk
     if (this.settingsManager.settings.cacheEnabled) {
       await this.cachingRegistry.restoreFromDisk();

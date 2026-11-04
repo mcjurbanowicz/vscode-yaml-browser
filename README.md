@@ -32,11 +32,14 @@ group lists local files referenced by the active file and files that reference i
 
 The separate **YAML Controls** panel provides **Collapse YAML** and **Expand
 YAML** to fold or unfold the active editor, **Collapse Structure Tree** and
-**Expand Structure Tree** to control the outline, and **Validate YAML** to
-refresh diagnostics. Use its Show/Hide actions to toggle conditions and stage,
-job, and step parameters in the structure tree. The **Expand Templates** toolbar
-button opens an editable, unsaved YAML document
-with local stage, job, and step templates recursively inlined. Simple template
+**Expand Structure Tree** to control the outline, **Validate YAML** to
+refresh diagnostics, and **Expand Templates** to open a new unsaved YAML
+document with local templates recursively inlined as a unified pipeline. Use
+its Show/Hide actions to toggle conditions and stage,
+job, and step parameters in the structure tree. The **Expand Templates** action
+in the YAML Controls panel (also available from the YAML Structure toolbar)
+opens an editable, unsaved YAML document with local templates recursively
+inlined. Simple template
 parameter references are substituted; compile-time `if` and `each` expressions
 remain unchanged. The source pipeline and templates are not modified.
 Use **Generate Decision Paths** to simulate the conditions in either a pipeline
@@ -50,6 +53,8 @@ Optional conditions and stage, job, and step parameters
 can be enabled with the `adoInspector.showConditions`,
 `adoInspector.showStageParameters`, `adoInspector.showJobParameters`, and
 `adoInspector.showStepParameters` settings.
+By default, the YAML Inspector and YAML Controls panel containers open when
+VS Code starts; disable `adoInspector.showPanel` to turn off this behavior.
 
 Stage, job, and step icons use distinct colors for concrete entries and
 templates. Their colors can be overridden with the corresponding

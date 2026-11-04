@@ -158,12 +158,16 @@ function namedEntry(
     const conditionPair = mapPair(entryNode, 'condition');
     const condition = displayValue(conditionPair?.value);
     if (condition && conditionPair) {
-      children.push(sectionNode(
+      const conditionNode = sectionNode(
         `${id}-condition`,
         `condition: ${condition}`,
         conditionPair.value,
-        pairOffset(conditionPair)
-      ));
+        pairOffset(conditionPair),
+        [],
+        'testing.iconPassed'
+      );
+      conditionNode.icon = 'question';
+      children.push(conditionNode);
     }
   }
 
@@ -248,7 +252,7 @@ function buildEntries(
         item,
         offsetOf(item),
         [],
-        kind === 'parameter' ? 'foreground' : undefined
+        kind === 'parameter' || kind === 'variable' ? 'foreground' : undefined
       );
     });
     return kind === 'stage' || kind === 'job' || kind === 'step'
@@ -265,7 +269,7 @@ function buildEntries(
         pair.value,
         pairOffset(pair),
         [],
-        kind === 'parameter' ? 'foreground' : undefined
+        kind === 'parameter' || kind === 'variable' ? 'foreground' : undefined
       );
     });
   }
@@ -358,7 +362,9 @@ function buildDocumentSections(
       pair.value,
       pairOffset(pair),
       entries,
-      sectionName === 'parameters' ? 'foreground' : undefined
+      sectionName === 'parameters' || sectionName === 'variables'
+        ? 'foreground'
+        : undefined
     ));
   }
   return nodes;

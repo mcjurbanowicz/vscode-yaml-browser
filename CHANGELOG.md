@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.14
+- Styled the VARIABLES section and its entries consistently with PARAMETERS in the YAML Structure view.
+
+## 0.0.13
+- Opened the YAML Inspector and YAML Controls panel containers by default when VS Code starts. Set `adoInspector.showPanel` to `false` to disable this behavior.
+- Displayed condition entries in the YAML Structure view with a green question-mark icon.
+- Added an Expand Templates action to YAML Controls that opens the unified expanded pipeline in a new unsaved editor.
+
 ## 0.0.12
 - Added scenario-based decision path diagrams for pipeline conditions, with input suggestions derived from parameter defaults and values referenced by conditions.
 - Added a Mermaid preview for expanded local-template pipelines and explicitly reported expressions that need Azure runtime context.

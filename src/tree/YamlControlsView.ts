@@ -42,6 +42,11 @@ export class YamlControlsViewProvider implements vscode.TreeDataProvider<vscode.
       },
       { label: 'Validate YAML', command: 'adoInspector.validateYaml', icon: 'check' },
       {
+        label: 'Expand Templates',
+        command: 'adoInspector.expandTemplates',
+        icon: 'layers',
+      },
+      {
         label: 'Generate Decision Paths',
         command: 'adoInspector.generateDecisionPaths',
         icon: 'graph',
