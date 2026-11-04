@@ -2,8 +2,13 @@
   "name": "ado-yaml-inspector",
   "displayName": "Azure DevOps YAML Inspector",
   "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
-  "version": "0.0.14",
+  "license": "MIT",
+  "version": "0.0.15",
   "publisher": "ado-inspector",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcjurbanowicz/vscode-yaml-browser.git"
+  },
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -24,7 +29,7 @@
     "test": "npm run compile && node --test",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "package": "vsce package --allow-missing-repository --skip-license",
+    "package": "vsce package --allow-missing-repository",
     "publish": "vsce publish"
   },
   "contributes": {
@@ -316,7 +321,7 @@
         "adoInspector.showPanel": {
           "type": "boolean",
           "default": true,
-          "description": "Open the YAML Inspector and YAML Controls panel containers when VS Code starts."
+          "description": "Open the YAML Inspector side bar and YAML Controls panel when VS Code starts."
         },
         "adoInspector.highlightReferences": {
           "type": "boolean",
@@ -346,16 +351,18 @@
       }
     },
     "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "adoInspectorPanel",
+          "title": "YAML Inspector",
+          "icon": "resources/yaml-inspector.svg"
+        }
+      ],
       "panel": [
         {
           "id": "adoInspectorControlsPanel",
           "title": "YAML Controls",
           "icon": "resources/yaml-controls.svg"
-        },
-        {
-          "id": "adoInspectorPanel",
-          "title": "YAML Inspector",
-          "icon": "resources/yaml-inspector.svg"
         }
       ]
     },
@@ -368,12 +375,12 @@
       ],
       "adoInspectorPanel": [
         {
-          "id": "adoInspectorPanelTemplateExplorer",
-          "name": "Template Explorer"
-        },
-        {
           "id": "adoInspectorPanelStructureTree",
           "name": "YAML Structure"
+        },
+        {
+          "id": "adoInspectorPanelTemplateExplorer",
+          "name": "Template Explorer"
         }
       ]
     }

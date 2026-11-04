@@ -22,16 +22,16 @@ For manual setup and troubleshooting, see `WSL_SETUP.md` in the workspace.
 npm run compile
 ```
 
-## YAML Inspector panel
+## YAML Inspector and YAML Controls
 
-The **YAML Inspector** panel contains a **Template Explorer** view for navigating
+The **YAML Inspector** side bar contains a **Template Explorer** view for navigating
 the active file's template references and a **YAML Structure** view showing its
 parameters, variables, schedules, triggers, stages, jobs, and steps. Select an
 item to jump to its source location. The expandable **Template references**
 group lists local files referenced by the active file and files that reference it.
 
-The separate **YAML Controls** panel provides **Collapse YAML** and **Expand
-YAML** to fold or unfold the active editor, **Collapse Structure Tree** and
+The **YAML Controls** panel provides **Collapse YAML** and **Expand YAML** to
+fold or unfold the active editor, **Collapse Structure Tree** and
 **Expand Structure Tree** to control the outline, **Validate YAML** to
 refresh diagnostics, and **Expand Templates** to open a new unsaved YAML
 document with local templates recursively inlined as a unified pipeline. Use
@@ -53,8 +53,8 @@ Optional conditions and stage, job, and step parameters
 can be enabled with the `adoInspector.showConditions`,
 `adoInspector.showStageParameters`, `adoInspector.showJobParameters`, and
 `adoInspector.showStepParameters` settings.
-By default, the YAML Inspector and YAML Controls panel containers open when
-VS Code starts; disable `adoInspector.showPanel` to turn off this behavior.
+The YAML Inspector side bar and YAML Controls panel open when VS Code starts
+by default. Disable `adoInspector.showPanel` to turn off this behavior.
 
 Stage, job, and step icons use distinct colors for concrete entries and
 templates. Their colors can be overridden with the corresponding
@@ -63,3 +63,7 @@ templates. Their colors can be overridden with the corresponding
 ## Test data
 
 Sample Azure DevOps pipeline YAML is under `test-data/pipelines/`.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

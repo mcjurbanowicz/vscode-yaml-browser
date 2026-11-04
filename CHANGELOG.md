@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.15
+- Put YAML Inspector in the side bar and kept YAML Controls in the bottom panel.
+
 ## 0.0.14
 - Styled the VARIABLES section and its entries consistently with PARAMETERS in the YAML Structure view.
 
