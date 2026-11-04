@@ -1,0 +1,11 @@
+steps:
+- pwsh: |
+    Write-Output "Hello step"
+  displayName: 'Hello'
+- pwsh: |
+    Write-Output "Hello step 2"
+  name: 'sth'
+  displayName: 'Hello 2'
+- pwsh: |
+    Write-Output "Hello step 3"
+  displayName: 'Hello 3'

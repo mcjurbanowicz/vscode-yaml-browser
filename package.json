@@ -1,0 +1,399 @@
+{
+  "name": "ado-yaml-inspector",
+  "displayName": "Azure DevOps YAML Inspector",
+  "description": "A VS Code extension for inspecting Azure DevOps YAML pipelines. Validates templates, resolves references, and provides navigation between template levels.",
+  "license": "MIT",
+  "version": "0.0.15",
+  "publisher": "ado-inspector",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcjurbanowicz/vscode-yaml-browser.git"
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:yaml"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['out', 'dist']) fs.rmSync(dir, { recursive: true, force: true })\"",
+    "compile": "npm run clean && tsc -p ./ && npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --minify --sourcemap=external --outfile=dist/extension.js",
+    "test": "npm run compile && node --test",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package --allow-missing-repository",
+    "publish": "vsce publish"
+  },
+  "contributes": {
+    "colors": [
+      {
+        "id": "adoInspector.stageIconForeground",
+        "description": "Color for stage icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#C084FC",
+          "light": "#9333EA",
+          "highContrast": "#C084FC",
+          "highContrastLight": "#6B21A8"
+        }
+      },
+      {
+        "id": "adoInspector.stageTemplateIconForeground",
+        "description": "Color for stage template icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#A855F7",
+          "light": "#6B21A8",
+          "highContrast": "#A855F7",
+          "highContrastLight": "#581C87"
+        }
+      },
+      {
+        "id": "adoInspector.jobIconForeground",
+        "description": "Color for job icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#FB923C",
+          "light": "#EA580C",
+          "highContrast": "#FB923C",
+          "highContrastLight": "#9A3412"
+        }
+      },
+      {
+        "id": "adoInspector.jobTemplateIconForeground",
+        "description": "Color for job template icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#FACC15",
+          "light": "#A16207",
+          "highContrast": "#FACC15",
+          "highContrastLight": "#854D0E"
+        }
+      },
+      {
+        "id": "adoInspector.stepIconForeground",
+        "description": "Color for step icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#60A5FA",
+          "light": "#2563EB",
+          "highContrast": "#60A5FA",
+          "highContrastLight": "#1E40AF"
+        }
+      },
+      {
+        "id": "adoInspector.stepTemplateIconForeground",
+        "description": "Color for step template icons in the YAML Structure view.",
+        "defaults": {
+          "dark": "#3B82F6",
+          "light": "#1E3A8A",
+          "highContrast": "#3B82F6",
+          "highContrastLight": "#172554"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "adoInspector.scanTemplates",
+        "title": "Azure DevOps: Scan Templates",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.clearCache",
+        "title": "Azure DevOps: Clear Cache",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.openReferencingFile",
+        "title": "Azure DevOps: Find Template References",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.navigateToTemplate",
+        "title": "Azure DevOps: Navigate to Template",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.navigateToYamlElement",
+        "title": "Azure DevOps: Go to YAML Element",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.collapseYaml",
+        "title": "Azure DevOps: Collapse YAML",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.expandYaml",
+        "title": "Azure DevOps: Expand YAML",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.collapseStructureTree",
+        "title": "Azure DevOps: Collapse YAML Structure",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.expandStructureTree",
+        "title": "Azure DevOps: Expand YAML Structure",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.validateYaml",
+        "title": "Azure DevOps: Validate YAML",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.expandTemplates",
+        "title": "Azure DevOps: Expand Templates",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.generateDecisionPaths",
+        "title": "Azure DevOps: Generate Decision Paths",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowConditions",
+        "title": "Azure DevOps: Toggle Show Conditions",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowStageParameters",
+        "title": "Azure DevOps: Toggle Show Stage Parameters",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowJobParameters",
+        "title": "Azure DevOps: Toggle Show Job Parameters",
+        "category": "Azure DevOps YAML Inspector"
+      },
+      {
+        "command": "adoInspector.toggleShowStepParameters",
+        "title": "Azure DevOps: Toggle Show Step Parameters",
+        "category": "Azure DevOps YAML Inspector"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "adoInspector.scanTemplates",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.clearCache",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.openReferencingFile",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.navigateToTemplate",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.collapseYaml",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.expandYaml",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.collapseStructureTree",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.expandStructureTree",
+          "when": "config.adoInspector.enabled"
+        },
+        {
+          "command": "adoInspector.validateYaml",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.expandTemplates",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.generateDecisionPaths",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowConditions",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowStageParameters",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowJobParameters",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        },
+        {
+          "command": "adoInspector.toggleShowStepParameters",
+          "when": "config.adoInspector.enabled && editorLangId == yaml"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "adoInspector.generateDecisionPaths",
+          "when": "(view == adoInspectorPanelStructureTree || view == adoInspectorPanelTemplateExplorer) && editorLangId == yaml",
+          "group": "navigation",
+          "title": "Generate Decision Paths",
+          "icon": "$(graph)"
+        },
+        {
+          "command": "adoInspector.expandTemplates",
+          "when": "(view == adoInspectorPanelStructureTree || view == adoInspectorPanelTemplateExplorer) && editorLangId == yaml",
+          "group": "navigation",
+          "title": "Expand Templates",
+          "icon": "$(layers)"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Azure DevOps YAML Inspector",
+      "properties": {
+        "adoInspector.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Azure DevOps YAML Inspector extension."
+        },
+        "adoInspector.scanRoot": {
+          "type": "string",
+          "default": ".",
+          "description": "Root directory to scan for Azure DevOps YAML files. Can be an absolute path or relative to the workspace root."
+        },
+        "adoInspector.includePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "*.yml",
+            "*.yaml"
+          ],
+          "description": "File patterns to include when scanning for YAML files."
+        },
+        "adoInspector.excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/.git/**"
+          ],
+          "description": "File patterns to exclude when scanning for YAML files."
+        },
+        "adoInspector.maxDepth": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum depth of template traversal. A value of 3 means the extension will traverse up to 3 levels of nested templates."
+        },
+        "adoInspector.minDepth": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Minimum template depth included in the tree. The root file remains as an anchor; higher values flatten shallower template nodes."
+        },
+        "adoInspector.cacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable caching of resolved templates to avoid re-scanning."
+        },
+        "adoInspector.cachePath": {
+          "type": "string",
+          "default": "~/.ado-cache",
+          "description": "Path to the cache directory for storing resolved templates."
+        },
+        "adoInspector.showPanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the YAML Inspector side bar and YAML Controls panel when VS Code starts."
+        },
+        "adoInspector.highlightReferences": {
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight template references in the editor."
+        },
+        "adoInspector.showConditions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show condition expressions under stages, jobs, and steps in the YAML structure tree."
+        },
+        "adoInspector.showStageParameters": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show stage template parameters in the YAML structure tree."
+        },
+        "adoInspector.showJobParameters": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show job template parameters in the YAML structure tree."
+        },
+        "adoInspector.showStepParameters": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show step template parameters in the YAML structure tree."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "adoInspectorPanel",
+          "title": "YAML Inspector",
+          "icon": "resources/yaml-inspector.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "adoInspectorControlsPanel",
+          "title": "YAML Controls",
+          "icon": "resources/yaml-controls.svg"
+        }
+      ]
+    },
+    "views": {
+      "adoInspectorControlsPanel": [
+        {
+          "id": "adoInspectorPanelYamlControls",
+          "name": "YAML Controls"
+        }
+      ],
+      "adoInspectorPanel": [
+        {
+          "id": "adoInspectorPanelStructureTree",
+          "name": "YAML Structure"
+        },
+        {
+          "id": "adoInspectorPanelTemplateExplorer",
+          "name": "Template Explorer"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.20.0",
+    "typescript": "^5.8.0",
+    "yaml": "^2.9.1"
+  }
+}

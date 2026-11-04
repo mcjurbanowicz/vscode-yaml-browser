@@ -1,0 +1,10 @@
+variables:
+  BuildId: '$(Build.BuildId)'
+  PipelineName: 'Main Pipeline'
+  SourceBranch: '$(Build.SourceBranch)'
+  BuildNumber: '$(Build.BuildNumber)'
+  AgentName: '$(Agent.Name)'
+  AgentVersion: '$(Agent.Version)'
+  CurrentDate: '$(Build.SourceTimeDate)'
+  BuildPlatform: '$(Build.SourcesDirectory)'
+  BuildConfiguration: '$(BuildConfiguration)'

@@ -1,6 +1,3 @@
-# Main Build Pipeline
-# Uses nested templates: deploy-template.yml -> build-template.yml -> common.yml
-# This demonstrates a 3-level template hierarchy
 
 parameters:
   - name: image
@@ -23,10 +20,6 @@ parameters:
     default: true
     displayName: 'Include Tests'
 
----
-# Main Build Pipeline - Uses Level 2 template which cascades to Level 1 -> Level 0
-# Template chain: deploy-template.yml (L2) -> build-template.yml (L1) -> common.yml (L0)
-
 variables:
   - name: BuildId
     value: '$(Build.BuildId)'
@@ -36,14 +29,11 @@ variables:
     value: 'staging'
 
 stages:
-  # Stage 1: Cascading template call (Level 2 -> Level 1 -> Level 0)
-  # This template calls build-template.yml which in turn calls common.yml
   - template: ./common-pipeline-templates/deploy-template.yml
     parameters:
       environment: '$(Environment)'
       buildImage: ${{ parameters.image }}
 
-  # Stage 2: Direct template call for build-specific tasks
   - template: ./common-pipeline-templates/build-template.yml
     parameters:
       image: ${{ parameters.image }}
@@ -63,18 +53,20 @@ stages:
                 Write-Output "includeTests parameter is false"
               displayName: 'Skip Tests'
 
-  # Stage 3: Direct job for additional build tasks
   - stage: FinalizeBuild
     displayName: 'Finalize Build'
+    condition: succeeded()
     jobs:
       - job: Package
         displayName: 'Package Job'
+        condition: succeeded()
         steps:
           - pwsh: |
               Write-Output "Packaging build artifacts..."
               Write-Output "Compression: zip"
               Write-Output "Output: build/artifacts/output.zip"
             displayName: 'Package'
+            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
           - pwsh: |
               Write-Output "Build ID: $(BuildId)"
               Write-Output "Pipeline: $(PipelineName)"
